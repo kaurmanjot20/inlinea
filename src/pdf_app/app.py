@@ -6,12 +6,11 @@ from gi.repository import Gtk, Adw, Gio, Gdk
 from pdf_app.window import MainWindow
 
 class PDFApplication(Adw.Application):
-    def __init__(self, application_id='com.mkaur.pdfapp', flags=Gio.ApplicationFlags.FLAGS_NONE):
+    def __init__(self, application_id='com.inlinea.app', flags=Gio.ApplicationFlags.FLAGS_NONE):
         super().__init__(application_id=application_id, flags=flags)
         
     def do_activate(self):
         """Called when the application is activated (e.g., launched)."""
-        print("DEBUG: Application activated")
         
         # Load CSS (Safe to do here)
         self.load_css()
@@ -23,7 +22,6 @@ class PDFApplication(Adw.Application):
         win.present()
         
     def load_css(self):
-        print("DEBUG: Loading CSS")
         provider = Gtk.CssProvider()
         try:
             import os
@@ -41,13 +39,12 @@ class PDFApplication(Adw.Application):
                     break
             
             if css_path:
-                print(f"DEBUG: Found CSS at {css_path}")
                 provider.load_from_path(css_path)
                 display = Gdk.Display.get_default()
                 Gtk.StyleContext.add_provider_for_display(
                     display, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
                 )
             else:
-                print("DEBUG: CSS file not found")
+                pass  # CSS file not found
         except Exception as e:
-            print(f"DEBUG: Error loading CSS: {e}")
+            pass  # CSS loading error

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Entry point for PDF Annotation Workspace.
+Entry point for Inlinea — PDF Annotation Editor.
 Run this file from the project root to start the application.
 """
 import sys

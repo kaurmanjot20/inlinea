@@ -90,7 +90,6 @@ class PDFDrawingArea(Gtk.DrawingArea):
 
     def handle_drag_begin(self, start_x, start_y):
         """Called by parent when drag starts on a handle."""
-        print(f"DEBUG: PDFDrawingArea handle_drag_begin at ({start_x}, {start_y})")
         if not self.selected_annotation:
             return False
         
@@ -112,7 +111,6 @@ class PDFDrawingArea(Gtk.DrawingArea):
                     self._anchor_pdf = (last_r[0] + last_r[2], last_r[1] + last_r[3])
                 cursor = Gdk.Cursor.new_from_name("w-resize", None)
                 self.set_cursor(cursor)
-                print(f"DEBUG: Started resizing START handle, anchor at {self._anchor_pdf}")
                 return True
     
             elif dist_end < threshold:
@@ -124,7 +122,6 @@ class PDFDrawingArea(Gtk.DrawingArea):
                     self._anchor_pdf = (first_r[0], first_r[1])
                 cursor = Gdk.Cursor.new_from_name("e-resize", None)
                 self.set_cursor(cursor)
-                print(f"DEBUG: Started resizing END handle, anchor at {self._anchor_pdf}")
                 return True
             
         # Check for MOVE (drag body) - Valid for ALL annotation types
@@ -142,7 +139,6 @@ class PDFDrawingArea(Gtk.DrawingArea):
                 self._old_rects = list(ann.rects) if ann.rects else []
                 cursor = Gdk.Cursor.new_from_name("move", None)
                 self.set_cursor(cursor)
-                print(f"DEBUG: Started MOVING annotation {ann.id}")
                 return True
                 
         return False
@@ -194,7 +190,6 @@ class PDFDrawingArea(Gtk.DrawingArea):
         rect.x2 = max(pdf_x, anchor_x)
         rect.y2 = max(pdf_y, anchor_y)
         
-        print(f"DEBUG: Selection rect: ({rect.x1:.1f}, {rect.y1:.1f}) to ({rect.x2:.1f}, {rect.y2:.1f})")
         
         # Get text selection region from Poppler
         try:
@@ -212,18 +207,15 @@ class PDFDrawingArea(Gtk.DrawingArea):
                         r.x, r.y, r.width, r.height
                     ))
                 self.selected_annotation.rects = new_rects
-                print(f"DEBUG: Updated to {len(new_rects)} rects")
             else:
-                print("DEBUG: No text in selection region")
+                pass  # No selected text in region
         except Exception as e:
-            print(f"DEBUG: Selection error: {e}")
-        
+            pass  # Selection error
         self.queue_draw()
 
     def handle_drag_end(self, offset_x, offset_y):
         """Finalize resize and save."""
         if self._resizing_handle and self.selected_annotation and self._old_rects:
-            print(f"DEBUG: Finished resizing {self._resizing_handle} handle")
             # Record the modification for undo (stores old rects)
             self.store.record_modify(self.selected_annotation.id, self._old_rects)
             

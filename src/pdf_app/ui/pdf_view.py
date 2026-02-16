@@ -1,6 +1,6 @@
 import gi
 gi.require_version('Gtk', '4.0')
-from gi.repository import Gtk, Adw, GLib, Gdk, GObject
+from gi.repository import Gtk, Adw, GLib, Gdk, GObject, Gio
 
 from pdf_app.document.loading import load_document
 from pdf_app.ui.page_view import PDFPageView
@@ -96,23 +96,29 @@ class PDFView(Gtk.ScrolledWindow):
 
     def load_pdf(self):
         try:
-            # 1. Load PDF logic
-            self.document = load_document(self.file)
+            file_path = self.file.get_path()
+            
+            # 1. Load annotations from original PDF into store
+            self.store.load_from_pdf(file_path)
+            
+            # 2. Create a temp copy with our annotations stripped
+            #    so Poppler doesn't render them (our overlay draws them)
+            from pdf_app.document.pdf_storage import create_render_copy
+            self._render_copy_path = create_render_copy(file_path)
+            
+            # 3. Load the clean temp copy into Poppler for rendering
+            render_file = Gio.File.new_for_path(self._render_copy_path)
+            self.document = load_document(render_file)
             if not self.document:
                 self.show_error("Failed to load PDF.")
                 return
-                
-            # 2. Load Annotations
-            self.store.load(self.file.get_path())
-
+            
             n_pages = self.document.get_n_pages()
             print(f"Loaded PDF with {n_pages} pages.")
 
             # Render pages
             for i in range(n_pages):
                 page = self.document.get_page(i)
-                # Pass store to page view
-                # Pass store to page view
                 page_view = PDFPageView(page, i, self.store)
                 self.pages.append(page_view)
                 self.page_box.append(page_view)
@@ -121,6 +127,8 @@ class PDFView(Gtk.ScrolledWindow):
             GLib.idle_add(self._fit_to_width)
 
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             self.show_error(str(e))
 
     def _fit_to_width(self):
@@ -140,7 +148,6 @@ class PDFView(Gtk.ScrolledWindow):
         self.scale = fit_scale
         self._gesture_start_scale = fit_scale
         self._apply_zoom()
-        print(f"DEBUG: Fit to width: {self.scale:.1%}")
         return False
 
     def set_tool(self, tool_name):

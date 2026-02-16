@@ -8,10 +8,10 @@ class EmptyView(Gtk.Box):
         self.set_halign(Gtk.Align.CENTER)
         self.set_valign(Gtk.Align.CENTER)
         
-        label = Gtk.Label(label="Welcome to PDF Workspace")
+        label = Gtk.Label(label="Welcome to Inlinea")
         label.add_css_class("title-1")
         
-        sub = Gtk.Label(label="Open a file to start annotating.")
+        sub = Gtk.Label(label="Open a PDF to start annotating.")
         sub.add_css_class("body")
         
         self.append(label)

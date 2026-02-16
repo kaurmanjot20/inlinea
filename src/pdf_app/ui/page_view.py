@@ -124,12 +124,11 @@ class PDFPageView(Gtk.Overlay):
         self.drawing_area.queue_draw()
 
     def on_annotation_update(self, ann):
-        # Save store
-        self.store.save()
+        # Mark dirty (save is explicit via Save As)
+        self.store.is_dirty = True
 
     def on_click_pressed(self, gesture, n_press, x, y):
         # Tool-First: Add Text
-        print(f"DEBUG: on_click_pressed tool={self.current_tool} at ({x}, {y})")
         if self.current_tool == 'text':
             self.create_text_annotation_at_click(x, y)
             # self.activate_tool(None) # REMOVED: Keep tool active (Sticky)
@@ -148,7 +147,6 @@ class PDFPageView(Gtk.Overlay):
         hit_ann = self.store.find_annotation_at(self.page_number, pdf_x, pdf_y)
         
         if hit_ann:
-            print(f"DEBUG: Selected Annotation: {hit_ann.id} type={hit_ann.type}")
             self.drawing_area.selected_annotation = hit_ann
             self.drawing_area.selected_region = None # Clear text selection
             self.drawing_area.queue_draw()
@@ -161,7 +159,6 @@ class PDFPageView(Gtk.Overlay):
             # Deselect if clicked empty space... UNLESS we clicked a handle!
             if self.drawing_area.selected_annotation:
                 if self.drawing_area.is_point_on_handle(x, y):
-                    print("DEBUG: Clicked on handle, keeping selection")
                     return
                 
                 self.drawing_area.selected_annotation = None
@@ -181,12 +178,11 @@ class PDFPageView(Gtk.Overlay):
         # Attach to SELF (Overlay) for correct parenting
         self.editor_popover = TextEditorPopover(self, ann, self.on_text_updated)
         self.editor_popover.update_position(self.scale)
-        print(f"DEBUG: Opening editor for {ann.id}")
         self.editor_popover.popup()
         
     def on_text_updated(self, ann):
         self.drawing_area.queue_draw()
-        self.store.save()
+        self.store.is_dirty = True
 
     def on_key_pressed(self, controller, keyval, keycode, state):
         # Handle Escape to exit text mode
@@ -221,8 +217,8 @@ class PDFPageView(Gtk.Overlay):
         self.load_widgets() # Simplify by just reloading
 
     def on_annotation_update(self, ann):
-        # Save store
-        self.store.save()
+        # Mark dirty (save is explicit via Save As)
+        self.store.is_dirty = True
 
     def on_resize_drag_begin(self, gesture, start_x, start_y):
         """Handle highlight resize drag (intercepted from Overlay)."""
@@ -230,14 +226,12 @@ class PDFPageView(Gtk.Overlay):
         handled = self.drawing_area.handle_drag_begin(start_x, start_y)
         if handled:
             gesture.set_state(Gtk.EventSequenceState.CLAIMED)
-            print("DEBUG: PageView claimed resize drag")
         else:
             self.handle_click_logic(start_x, start_y)
             gesture.set_state(Gtk.EventSequenceState.DENIED)
 
     def handle_click_logic(self, x, y):
         """Unified click logic."""
-        print(f"DEBUG: handle_click_logic tool={self.current_tool} at ({x:.1f}, {y:.1f})")
         
         # 1. Tool Creation (Text)
         if self.current_tool == 'text':
@@ -249,7 +243,6 @@ class PDFPageView(Gtk.Overlay):
         hit_ann = self.store.find_annotation_at(self.page_number, x/self.scale, y/self.scale)
         
         if hit_ann:
-            print(f"DEBUG: Selected Annotation: {hit_ann.id}")
             self.drawing_area.selected_annotation = hit_ann
             self.drawing_area.selected_region = None
             self.drawing_area.queue_draw()
@@ -406,7 +399,6 @@ class PDFPageView(Gtk.Overlay):
 
     def activate_tool(self, tool_name):
         """Set the active tool (text, highlight, underline)."""
-        print(f"DEBUG: activate_tool {tool_name}")
         self.current_tool = tool_name
         
         # Update cursor

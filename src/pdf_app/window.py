@@ -11,14 +11,18 @@ class MainWindow(Adw.ApplicationWindow):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         
-        self.set_title("PDF Workspace")
+        self.set_title("Inlinea")
         self.set_default_size(1200, 800)
         
         self.connect("close-request", self.on_close_request)
         # --- UI Structure ---
-        # 1. ToolbarView (Handles Top/Bottom Bars)
+        # 1. ToastOverlay (for toast notifications)
+        self.toast_overlay = Adw.ToastOverlay()
+        self.set_content(self.toast_overlay)
+        
+        # 2. ToolbarView (Handles Top/Bottom Bars)
         self.toolbar_view = Adw.ToolbarView()
-        self.set_content(self.toolbar_view)
+        self.toast_overlay.set_child(self.toolbar_view)
         
         # 2. Header Bar
         self.header_bar = Adw.HeaderBar()
@@ -172,26 +176,22 @@ class MainWindow(Adw.ApplicationWindow):
         action_zoom_reset.connect("activate", self.on_zoom_reset)
         self.add_action(action_zoom_reset)
         
-        # File Actions
+        # File Actions — Save (direct overwrite)
         action_save = Gio.SimpleAction.new("save", None)
-        action_save.connect("activate", self.on_save) # Keep Sidecar Sync
+        action_save.connect("activate", self.on_save)
         self.add_action(action_save)
         
-        # Save Project As (JSON)
-        action_save_as = Gio.SimpleAction.new("save_project_as", None)
-        action_save_as.connect("activate", self.on_save_project_as)
+        # Save As (copy to new file)
+        action_save_as = Gio.SimpleAction.new("save_as", None)
+        action_save_as.connect("activate", self.on_save_as)
         self.add_action(action_save_as)
-        
-        # Open Project (JSON)
-        action_open_project = Gio.SimpleAction.new("open_project", None)
-        action_open_project.connect("activate", self.on_open_project)
-        self.add_action(action_open_project)
         
         action_export = Gio.SimpleAction.new("export", None)
         action_export.connect("activate", self.on_export_pdf)
         self.add_action(action_export)
         
         app.set_accels_for_action("win.save", ["<Ctrl>s"])
+        app.set_accels_for_action("win.save_as", ["<Ctrl><Shift>s"])
         app.set_accels_for_action("win.deselect", ["Escape"])
 
         # Deselect Action (Escape)
@@ -343,8 +343,12 @@ class MainWindow(Adw.ApplicationWindow):
         btn_open.set_action_name("win.open_document")
         
         btn_save = Gtk.Button(icon_name="document-save-symbolic")
-        btn_save.set_tooltip_text("Save (Force JSON Sync)")
+        btn_save.set_tooltip_text("Save (Ctrl+S)")
         btn_save.set_action_name("win.save")
+        
+        btn_save_as = Gtk.Button(icon_name="document-save-as-symbolic")
+        btn_save_as.set_tooltip_text("Save As (Ctrl+Shift+S)")
+        btn_save_as.set_action_name("win.save_as")
         
         btn_export = Gtk.Button(icon_name="document-print-symbolic")
         btn_export.set_tooltip_text("Export to PDF")
@@ -352,6 +356,7 @@ class MainWindow(Adw.ApplicationWindow):
         
         box_file.append(btn_open)
         box_file.append(btn_save)
+        box_file.append(btn_save_as)
         box_file.append(btn_export)
         
         ribbon_box.append(box_file)
@@ -423,7 +428,6 @@ class MainWindow(Adw.ApplicationWindow):
             result = view.store.undo()
             if result:
                 op, ann = result
-                print(f"DEBUG: Undone {op} on annotation {ann.id}, page {ann.page_index}")
                 view.reload_page(ann.page_index)
 
     def on_redo(self, action, param):
@@ -436,7 +440,6 @@ class MainWindow(Adw.ApplicationWindow):
             result = view.store.redo()
             if result:
                 op, ann = result
-                print(f"DEBUG: Redone {op} on annotation {ann.id}, page {ann.page_index}")
                 view.reload_page(ann.page_index)
 
     def add_empty_tab(self):
@@ -470,17 +473,17 @@ class MainWindow(Adw.ApplicationWindow):
         self.tab_view.set_selected_page(page)
 
     def update_tab_status(self, page, is_dirty):
-        """Updates tab title with dirty indicator."""
+        """Updates tab title with dirty indicator (prefix style)."""
         title = page.get_title()
         if not title: return
         
-        # Suffix style: "Filename.pdf *"
+        # Prefix style: "* Filename.pdf"
         clean_title = title
-        if title.endswith(" *"):
-            clean_title = title[:-2]
+        if title.startswith("* "):
+            clean_title = title[2:]
             
         if is_dirty:
-            page.set_title(f"{clean_title} *")
+            page.set_title(f"* {clean_title}")
         else:
             page.set_title(clean_title)
 
@@ -509,17 +512,69 @@ class MainWindow(Adw.ApplicationWindow):
                 view.zoom_reset()
 
     def on_save(self, action, param):
-        """Save the annotations to JSON immediately."""
+        """Save annotations directly into the original PDF (Ctrl+S)."""
         selected_page = self.tab_view.get_selected_page()
         if not selected_page: return
-        page = selected_page
-        view = page.get_child()
-        if hasattr(view, 'store'):
-            view.store.save()
-            print(f"DEBUG: Saved annotations for {view.file.get_basename()}")
+        view = selected_page.get_child()
+        if not hasattr(view, 'store') or not hasattr(view, 'file'): return
+        
+        src = view.file.get_path()
+        try:
+            view.store.save_to_pdf(src, src)
+            toast = Adw.Toast.new(f"Saved {view.file.get_basename()}")
+            self.toast_overlay.add_toast(toast)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            toast = Adw.Toast.new("Save Failed")
+            self.toast_overlay.add_toast(toast)
+
+    def on_save_as(self, action, param):
+        """Save annotations to PDF (Save As dialog)."""
+        selected_page = self.tab_view.get_selected_page()
+        if not selected_page: return
+        view = selected_page.get_child()
+        if not hasattr(view, 'store'): return
+        
+        dialog = Gtk.FileChooserNative(
+            title="Save Annotated PDF As",
+            transient_for=self,
+            action=Gtk.FileChooserAction.SAVE
+        )
+        
+        filter_pdf = Gtk.FileFilter()
+        filter_pdf.set_name("PDF Documents")
+        filter_pdf.add_mime_type("application/pdf")
+        dialog.add_filter(filter_pdf)
+        
+        # Suggest filename: original_annotated.pdf
+        try:
+            orig_name = view.file.get_basename()
+            suggested = orig_name.replace(".pdf", "") + "_annotated.pdf"
+            dialog.set_current_name(suggested)
+        except: pass
+        
+        def on_response(d, response):
+            if response == Gtk.ResponseType.ACCEPT:
+                file = d.get_file()
+                path = file.get_path()
+                try:
+                    view.store.save_to_pdf(view.file.get_path(), path)
+                    toast = Adw.Toast.new(f"Saved to {file.get_basename()}")
+                    self.toast_overlay.add_toast(toast)
+                except Exception as e:
+                    print(f"Error saving: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    toast = Adw.Toast.new("Save Failed")
+                    self.toast_overlay.add_toast(toast)
+            d.destroy()
+            
+        dialog.connect("response", on_response)
+        dialog.show()
 
     def on_export_pdf(self, action, param):
-        """Export to Flattened PDF."""
+        """Export to Flattened PDF (annotations baked as drawings, non-editable)."""
         selected_page = self.tab_view.get_selected_page()
         if not selected_page: return
         page = selected_page
@@ -527,7 +582,7 @@ class MainWindow(Adw.ApplicationWindow):
         if not hasattr(view, 'store'): return
         
         dialog = Gtk.FileChooserNative(
-            title="Export PDF",
+            title="Export Flattened PDF",
             transient_for=self,
             action=Gtk.FileChooserAction.SAVE
         )
@@ -555,93 +610,10 @@ class MainWindow(Adw.ApplicationWindow):
                 if success:
                     print(f"Exported to {path}")
                     toast = Adw.Toast.new(f"Exported to {file.get_basename()}")
-                    self.toolbar_view.add_toast(toast)
+                    self.toast_overlay.add_toast(toast)
                 else:
                     toast = Adw.Toast.new("Export Failed")
-                    self.toolbar_view.add_toast(toast)
-            d.destroy()
-            
-        dialog.connect("response", on_response)
-        dialog.show()
-
-    def on_save_project_as(self, action, param):
-        """Save Project As (JSON)."""
-        selected_page = self.tab_view.get_selected_page()
-        if not selected_page: return
-        view = selected_page.get_child()
-        if not hasattr(view, 'store'): return
-        
-        dialog = Gtk.FileChooserNative(
-            title="Save Project As",
-            transient_for=self,
-            action=Gtk.FileChooserAction.SAVE
-        )
-        
-        filter_json = Gtk.FileFilter()
-        filter_json.set_name("Project Files (*.json)")
-        filter_json.add_pattern("*.json")
-        dialog.add_filter(filter_json)
-        
-        try:
-            orig_name = view.file.get_basename()
-            suggested = orig_name + ".json"
-            dialog.set_current_name(suggested)
-        except: pass
-        
-        def on_response(d, response):
-            if response == Gtk.ResponseType.ACCEPT:
-                file = d.get_file()
-                path = file.get_path()
-                try:
-                    view.store.save_to_file(path, view.file.get_path())
-                    toast = Adw.Toast.new(f"Project saved to {file.get_basename()}")
-                    self.toolbar_view.add_toast(toast)
-                except Exception as e:
-                    print(f"Error: {e}")
-                    toast = Adw.Toast.new("Save Failed")
-                    self.toolbar_view.add_toast(toast)
-            d.destroy()
-            
-        dialog.connect("response", on_response)
-        dialog.show()
-
-    def on_open_project(self, action, param):
-        """Open Project (JSON) into current PDF tab."""
-        selected_page = self.tab_view.get_selected_page()
-        if not selected_page: return
-        view = selected_page.get_child()
-        if not hasattr(view, 'store'): return
-        
-        dialog = Gtk.FileChooserNative(
-            title="Open Project",
-            transient_for=self,
-            action=Gtk.FileChooserAction.OPEN
-        )
-        
-        filter_json = Gtk.FileFilter()
-        filter_json.set_name("Project Files (*.json)")
-        filter_json.add_pattern("*.json")
-        dialog.add_filter(filter_json)
-        
-        def on_response(d, response):
-            if response == Gtk.ResponseType.ACCEPT:
-                file = d.get_file()
-                path = file.get_path()
-                try:
-                    mismatch = view.store.load_from_file(path, view.file.get_path())
-                    if mismatch:
-                        toast = Adw.Toast.new("Warning: PDF Mismatch")
-                        self.toolbar_view.add_toast(toast)
-                    else:
-                        toast = Adw.Toast.new("Project Loaded")
-                        self.toolbar_view.add_toast(toast)
-                        
-                    view.reload_page(view.page_number)
-                    
-                except Exception as e:
-                    print(f"Error: {e}")
-                    toast = Adw.Toast.new("Load Failed")
-                    self.toolbar_view.add_toast(toast)
+                    self.toast_overlay.add_toast(toast)
             d.destroy()
             
         dialog.connect("response", on_response)
@@ -811,7 +783,7 @@ class MainWindow(Adw.ApplicationWindow):
         if count == 1:
             page = dirty_pages[0]
             title = page.get_title()
-            if title.endswith(" *"): title = title[:-2]
+            if title.startswith("* "): title = title[2:]
             
             msg = f"Save changes to '{title}' before closing?"
             heading = "Save Changes?"
@@ -830,7 +802,7 @@ class MainWindow(Adw.ApplicationWindow):
             filenames = []
             for page in dirty_pages:
                 t = page.get_title()
-                if t.endswith(" *"): t = t[:-2]
+                if t.startswith("* "): t = t[2:]
                 filenames.append(t)
             
             # Use a box with a label to ensure left alignment
@@ -872,9 +844,11 @@ class MainWindow(Adw.ApplicationWindow):
             elif resp == "save":
                 for page in dirty_pages:
                     view = page.get_child()
-                    if hasattr(view, 'store'):
+                    if hasattr(view, 'store') and hasattr(view, 'file'):
                         try:
-                            view.store.save()
+                            # Save annotations back into PDF (overwrite source)
+                            src = view.file.get_path()
+                            view.store.save_to_pdf(src, src)
                         except Exception as e:
                             print(f"Error saving {page.get_title()}: {e}")
                             import traceback
