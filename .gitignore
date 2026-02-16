@@ -42,12 +42,3 @@ Thumbs.db
 *.log
 
 # Project Specific
-test_output.txt
-test_migration.py
-compile*.txt
-pip_output.txt
-pip_sys.txt
-pyver.txt
-api_check.txt
-color_test.txt
-poppler_check.txt

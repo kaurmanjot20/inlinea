@@ -9,13 +9,13 @@ This application requires GTK 4, Libadwaita, Poppler, and Cairo development head
 
 **Fedora / RHEL:**
 ```bash
-sudo dnf install gtk4-devel libadwaita-devel python3-gobject python3-cairo poppler-glib-devel cairo-devel
+sudo dnf install gtk4-devel libadwaita-devel python3-gobject python3-cairo poppler-glib-devel cairo-devel python3-pip python3-pymupdf
 ```
 
 **Ubuntu / Debian:**
 ```bash
 sudo apt update
-sudo apt install libgtk-4-dev libadwaita-1-dev python3-gi python3-full python3-cairo libcairo2-dev libgirepository1.0-dev libpoppler-glib-dev gir1.2-poppler-0.18
+sudo apt install libgtk-4-dev libadwaita-1-dev python3-gi python3-full python3-cairo libcairo2-dev libgirepository1.0-dev libpoppler-glib-dev gir1.2-poppler-0.18 python3-pip python3-pymupdf
 ```
 
 ## Running the Application
