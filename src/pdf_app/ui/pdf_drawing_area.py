@@ -88,6 +88,8 @@ class PDFDrawingArea(Gtk.DrawingArea):
         
         return dist_start < threshold or dist_end < threshold
 
+
+
     def handle_drag_begin(self, start_x, start_y):
         """Called by parent when drag starts on a handle."""
         if not self.selected_annotation:
@@ -269,7 +271,7 @@ class PDFDrawingArea(Gtk.DrawingArea):
                         c.fill()
                         
                 elif ann.type == 'underline':
-                    c.set_line_width(1.0)
+                    c.set_line_width(2.5)
                     for rect in ann.rects:
                         x, y, w, h = rect
                         c.move_to(x, y + h)
@@ -419,9 +421,11 @@ class PDFDrawingArea(Gtk.DrawingArea):
         c.set_source_rgba(0.2, 0.6, 1.0, 1.0)  # Blue fill
         c.arc(x2, y2 + handle_radius, handle_radius, 0, 6.28)
         c.fill()
-        
+
         # Also outline the rects slightly?
         c.set_source_rgba(0.2, 0.6, 1.0, 0.3) # Faint blue
         for r in ann.rects:
              c.rectangle(r[0]*self.scale, r[1]*self.scale, r[2]*self.scale, r[3]*self.scale)
              c.fill()
+
+

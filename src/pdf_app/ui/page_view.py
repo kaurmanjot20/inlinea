@@ -2,7 +2,7 @@ import cairo
 import gi
 gi.require_version('Gtk', '4.0')
 gi.require_version('Poppler', '0.18')
-from gi.repository import Gtk, Gdk, Poppler
+from gi.repository import Gtk, Gdk, GLib, Poppler
 
 from pdf_app.document.render import render_page_to_surface
 from pdf_app.document.store import Annotation, AnnotationStore
@@ -58,8 +58,6 @@ class PDFPageView(Gtk.Overlay):
         
         # Group gestures (Allow simultaneous recognition)
         click_gesture.group(self.resize_gesture)
-
-        # Context Menu
 
         # Context Menu
         self.setup_popover()
@@ -243,9 +241,18 @@ class PDFPageView(Gtk.Overlay):
         hit_ann = self.store.find_annotation_at(self.page_number, x/self.scale, y/self.scale)
         
         if hit_ann:
+            # Check if this annotation was ALREADY selected
+            is_already_selected = (self.drawing_area.selected_annotation == hit_ann)
+
             self.drawing_area.selected_annotation = hit_ann
             self.drawing_area.selected_region = None
             self.drawing_area.queue_draw()
+            
+            # Show color dialog for highlight/underline ONLY on second click
+            if hit_ann.type in ('highlight', 'underline'):
+                if is_already_selected:
+                    self._open_color_dialog()
+            # No popover to manage anymore
         else:
             # Deselect unless on handle
             if self.drawing_area.selected_annotation and not self.drawing_area.is_point_on_handle(x, y):
@@ -397,6 +404,45 @@ class PDFPageView(Gtk.Overlay):
         box.append(btn_text)
         self.popover.set_child(box)
 
+    # Color popover methods removed as per request to use direct dialog
+    # setup_color_popover removed
+    # _show_color_indicator removed
+    # _update_current_color_btn removed
+        """Open the native GTK color chooser dialog."""
+        ann = self.drawing_area.selected_annotation
+        if not ann:
+            return
+
+        dialog = Gtk.ColorDialog()
+        dialog.set_title("Pick a Color")
+        dialog.set_with_alpha(False)
+
+        # Set current color
+        r, g, b, a = ann.color
+        initial = Gdk.RGBA()
+        initial.red, initial.green, initial.blue, initial.alpha = r, g, b, 1.0
+
+        window = self.get_root()
+        dialog.choose_rgba(window, initial, None, self._on_color_dialog_finish)
+
+    def _on_color_dialog_finish(self, dialog, result):
+        """Handle the color dialog result."""
+        try:
+            rgba = dialog.choose_rgba_finish(result)
+        except GLib.Error:
+            return  # User cancelled
+
+        ann = self.drawing_area.selected_annotation
+        if not ann:
+            return
+
+        # Preserve alpha from existing color
+        _, _, _, a = ann.color
+        ann.color = (rgba.red, rgba.green, rgba.blue, a)
+
+        self.store.is_dirty = True
+        self.drawing_area.queue_draw()
+
     def activate_tool(self, tool_name):
         """Set the active tool (text, highlight, underline)."""
         self.current_tool = tool_name
@@ -410,6 +456,42 @@ class PDFPageView(Gtk.Overlay):
             self.set_cursor(cursor)
         else:
             self.set_cursor(None)
+
+    def _open_color_dialog(self):
+        """Open the native GTK color chooser dialog."""
+        ann = self.drawing_area.selected_annotation
+        if not ann:
+            return
+
+        dialog = Gtk.ColorDialog()
+        dialog.set_title("Pick a Color")
+        dialog.set_with_alpha(False)
+
+        # Set current color
+        r, g, b, a = ann.color
+        initial = Gdk.RGBA()
+        initial.red, initial.green, initial.blue, initial.alpha = r, g, b, 1.0
+
+        window = self.get_root()
+        dialog.choose_rgba(window, initial, None, self._on_color_dialog_finish)
+
+    def _on_color_dialog_finish(self, dialog, result):
+        """Handle the color dialog result."""
+        try:
+            rgba = dialog.choose_rgba_finish(result)
+        except GLib.Error:
+            return  # User cancelled
+
+        ann = self.drawing_area.selected_annotation
+        if not ann:
+            return
+
+        # Preserve alpha from existing color
+        _, _, _, a = ann.color
+        ann.color = (rgba.red, rgba.green, rgba.blue, a)
+
+        self.store.is_dirty = True
+        self.drawing_area.queue_draw()
 
     def on_highlight_clicked(self, btn):
         self.create_annotation_from_selection('highlight')
