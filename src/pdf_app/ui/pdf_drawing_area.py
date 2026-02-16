@@ -23,15 +23,19 @@ class PDFDrawingArea(Gtk.DrawingArea):
         self.set_can_target(True) # Allow events (focus)
         self.set_draw_func(self.on_draw)
         
+        self.scale = scale
+        self.store = store
+        
         # Selection State
-        self.selection_start = None
+        self.selection_start = None # (x, y) widget coords
         self.selection_end = None
-        self.selected_region = None
+        self.selected_region = None # Poppler.Region
+        self.temp_rect = None # (x, y, w, h) for area creation
         
         self.selected_annotation = None # For Highlights/Underlines
         
         # Handle Resize State
-        self._resizing_handle = None  # 'start' or 'end' when dragging
+        self._resizing_handle = None # 'start', 'end', 'move', 'nw', 'ne', 'sw', 'se'
         self._resize_start_pos = None  # Initial drag position
         self.handle_radius = 12  # Larger radius for easier clicking
         self._old_rects = None  # Store original rects for undo
@@ -62,6 +66,25 @@ class PDFDrawingArea(Gtk.DrawingArea):
             
         if ann.type == 'text':
             return None, None
+            
+        if ann.type == 'square':
+            # 4 Corner Handles
+            # Return list of tuples? existing code expects 2 tuple (start, end)
+            # We need to refactor or map square handles to start/end logic?
+            # actually, let's return (tl, br) as start/end for now, but handle all 4 in logic
+            if not ann.rects: return None, None
+            r = ann.rects[0]
+            x, y, w, h = r
+            
+            # TL
+            start_x = x * self.scale
+            start_y = y * self.scale
+            
+            # BR
+            end_x = (x + w) * self.scale
+            end_y = (y + h) * self.scale
+            
+            return (start_x, start_y), (end_x, end_y)
         
         first_rect = ann.rects[0]
         last_rect = ann.rects[-1]
@@ -87,6 +110,31 @@ class PDFDrawingArea(Gtk.DrawingArea):
         dist_end = ((x - end[0])**2 + (y - end[1])**2)**0.5
         
         return dist_start < threshold or dist_end < threshold
+
+    def _is_point_on_square_handle(self, x, y):
+         ann = self.selected_annotation
+         if not ann or ann.type != 'square' or not ann.rects: return False
+         
+         r = ann.rects[0]
+         rect_x = r[0] * self.scale
+         rect_y = r[1] * self.scale
+         rect_w = r[2] * self.scale
+         rect_h = r[3] * self.scale
+         
+         threshold = 10 # 5 radius * 2
+         
+         # Check 4 corners
+         corners = [
+             (rect_x, rect_y),
+             (rect_x + rect_w, rect_y),
+             (rect_x, rect_y + rect_h),
+             (rect_x + rect_w, rect_y + rect_h)
+         ]
+         
+         for cx, cy in corners:
+             if ((x - cx)**2 + (y - cy)**2)**0.5 < threshold:
+                 return True
+         return False
 
 
 
@@ -125,6 +173,40 @@ class PDFDrawingArea(Gtk.DrawingArea):
                 cursor = Gdk.Cursor.new_from_name("e-resize", None)
                 self.set_cursor(cursor)
                 return True
+            
+            # Check interaction with SQUARE HANDLES (4 corners)
+            if ann.type == 'square':
+                 # Recheck all 4 corners
+                 r = ann.rects[0]
+                 x = r[0] * self.scale
+                 y = r[1] * self.scale
+                 w = r[2] * self.scale
+                 h = r[3] * self.scale
+                 
+                 # TL, TR, BL, BR
+                 handles = [
+                     ('nw', x, y),
+                     ('ne', x + w, y),
+                     ('sw', x, y + h),
+                     ('se', x + w, y + h)
+                 ]
+                 
+                 for name, hx, hy in handles:
+                     dist = ((start_x - hx)**2 + (start_y - hy)**2)**0.5
+                     if dist < threshold:
+                         self._resizing_handle = name
+                         self._resize_start_pos = (start_x, start_y)
+                         self._old_rects = list(ann.rects)
+                         # Anchor is OPPOSITE corner
+                         if name == 'nw': self._anchor_pdf = (r[0]+r[2], r[1]+r[3])
+                         elif name == 'ne': self._anchor_pdf = (r[0], r[1]+r[3])
+                         elif name == 'sw': self._anchor_pdf = (r[0]+r[2], r[1])
+                         elif name == 'se': self._anchor_pdf = (r[0], r[1])
+                         
+                         cursor_name = f"{name}-resize"
+                         cursor = Gdk.Cursor.new_from_name(cursor_name, None)
+                         self.set_cursor(cursor)
+                         return True
             
         # Check for MOVE (drag body) - Valid for ALL annotation types
         # ... logic continues below ...
@@ -177,6 +259,21 @@ class PDFDrawingArea(Gtk.DrawingArea):
             self.selected_annotation.rects = new_rects
             self.queue_draw()
             return
+
+        # HANDLE SQUARE RESIZE
+        if self.selected_annotation.type == 'square':
+             anchor_x, anchor_y = self._anchor_pdf
+             
+             # Calculate new rect defined by anchor and current pdf point
+             # Normalize
+             new_x = min(anchor_x, pdf_x)
+             new_y = min(anchor_y, pdf_y)
+             new_w = abs(anchor_x - pdf_x)
+             new_h = abs(anchor_y - pdf_y)
+             
+             self.selected_annotation.rects = [(new_x, new_y, new_w, new_h)]
+             self.queue_draw()
+             return
 
         anchor_x, anchor_y = self._anchor_pdf
         
@@ -280,6 +377,14 @@ class PDFDrawingArea(Gtk.DrawingArea):
                 
                 elif ann.type == 'text':
                     self.draw_text_annotation(c, ann)
+
+                elif ann.type == 'square':
+                     # Area Highlight
+                     c.set_line_width(0) # No border (or maybe thin)
+                     for rect in ann.rects:
+                         x, y, w, h = rect
+                         c.rectangle(x, y, w, h)
+                         c.fill()
     
             c.restore()
 
@@ -300,6 +405,13 @@ class PDFDrawingArea(Gtk.DrawingArea):
         # 4. Draw Annotation Selection (Active)
         if self.selected_annotation:
             self.draw_annotation_selection(c, self.selected_annotation)
+            
+        # 5. Draw Temp Rect (Area Creation)
+        if self.temp_rect:
+            x, y, w, h = self.temp_rect
+            c.set_source_rgba(1.0, 1.0, 0.0, 0.4) # Yellow guide
+            c.rectangle(x, y, w, h)
+            c.fill()
 
     def draw_text_annotation(self, c, ann):
         if not ann.rects:
@@ -369,6 +481,53 @@ class PDFDrawingArea(Gtk.DrawingArea):
                 c.stroke()
             c.restore()
             return
+
+        if ann.type == 'square':
+             if not ann.rects: return
+             r = ann.rects[0]
+             x = r[0] * self.scale
+             y = r[1] * self.scale
+             w = r[2] * self.scale
+             h = r[3] * self.scale
+             
+             # Draw Box
+             c.set_line_width(1)
+             c.set_source_rgba(0.2, 0.6, 1.0, 0.8)
+             c.rectangle(x, y, w, h)
+             c.stroke()
+             
+             # Draw 4 corner handles
+             c.set_source_rgba(1, 1, 1, 1) # White fill
+             handle_r = 5
+             
+             # TL
+             c.rectangle(x - handle_r, y - handle_r, handle_r*2, handle_r*2)
+             c.fill_preserve()
+             c.set_source_rgba(0.2, 0.6, 1.0, 1.0) # Blue border
+             c.stroke()
+             
+             # TR
+             c.set_source_rgba(1, 1, 1, 1)
+             c.rectangle(x + w - handle_r, y - handle_r, handle_r*2, handle_r*2)
+             c.fill_preserve()
+             c.set_source_rgba(0.2, 0.6, 1.0, 1.0)
+             c.stroke()
+             
+             # BL
+             c.set_source_rgba(1, 1, 1, 1)
+             c.rectangle(x - handle_r, y + h - handle_r, handle_r*2, handle_r*2)
+             c.fill_preserve()
+             c.set_source_rgba(0.2, 0.6, 1.0, 1.0)
+             c.stroke()
+             
+             # BR
+             c.set_source_rgba(1, 1, 1, 1)
+             c.rectangle(x + w - handle_r, y + h - handle_r, handle_r*2, handle_r*2)
+             c.fill_preserve()
+             c.set_source_rgba(0.2, 0.6, 1.0, 1.0)
+             c.stroke()
+             
+             return
 
         # print(f"DEBUG: Drawing handles for {ann.id}")
         

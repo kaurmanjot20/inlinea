@@ -297,6 +297,30 @@ class MainWindow(Adw.ApplicationWindow):
         # Text
         btn_text = Gtk.ToggleButton(icon_name="document-edit-symbolic")
         btn_text.set_tooltip_text("Add Text")
+        # Select (Cursor)
+        btn_select = Gtk.ToggleButton(icon_name="edit-select-symbolic")
+        btn_select.set_tooltip_text("Select / Move")
+        btn_select.set_active(True)
+        btn_select.connect("toggled", self.on_tool_toggled, None)
+        self.btn_select = btn_select
+        
+        # Highlight
+        btn_highlight = Gtk.ToggleButton(icon_name="format-text-bold-symbolic")
+        btn_highlight.set_tooltip_text("Highlight")
+        btn_highlight.set_group(btn_select)
+        btn_highlight.connect("toggled", self.on_tool_toggled, "highlight")
+        self.btn_highlight = btn_highlight
+        
+        # Underline
+        btn_underline = Gtk.ToggleButton(icon_name="format-text-underline-symbolic")
+        btn_underline.set_tooltip_text("Underline")
+        btn_underline.set_group(btn_select)
+        btn_underline.connect("toggled", self.on_tool_toggled, "underline")
+        self.btn_underline = btn_underline
+        
+        # Text
+        btn_text = Gtk.ToggleButton(icon_name="document-edit-symbolic")
+        btn_text.set_tooltip_text("Add Text")
         btn_text.set_group(btn_select)
         btn_text.connect("toggled", self.on_tool_toggled, "text")
         self.btn_text = btn_text
@@ -305,6 +329,14 @@ class MainWindow(Adw.ApplicationWindow):
         box_tools.append(btn_highlight)
         box_tools.append(btn_underline)
         box_tools.append(btn_text)
+        
+        # Area Highlight
+        btn_area = Gtk.ToggleButton(icon_name="crosshair-symbolic") # or selection-squared-symbolic
+        btn_area.set_tooltip_text("Area Highlight")
+        btn_area.set_group(btn_select)
+        btn_area.connect("toggled", self.on_tool_toggled, "area")
+        self.btn_area = btn_area
+        box_tools.append(btn_area)
         
         ribbon_box.append(box_tools)
         
@@ -399,17 +431,20 @@ class MainWindow(Adw.ApplicationWindow):
         self.btn_highlight.handler_block_by_func(self.on_tool_toggled)
         self.btn_underline.handler_block_by_func(self.on_tool_toggled)
         self.btn_text.handler_block_by_func(self.on_tool_toggled)
+        self.btn_area.handler_block_by_func(self.on_tool_toggled)
         
         try:
              if tool_name == 'highlight': self.btn_highlight.set_active(True)
              elif tool_name == 'underline': self.btn_underline.set_active(True)
              elif tool_name == 'text': self.btn_text.set_active(True)
+             elif tool_name == 'area': self.btn_area.set_active(True)
              else: self.btn_select.set_active(True)
         finally:
              self.btn_select.handler_unblock_by_func(self.on_tool_toggled)
              self.btn_highlight.handler_unblock_by_func(self.on_tool_toggled)
              self.btn_underline.handler_unblock_by_func(self.on_tool_toggled)
              self.btn_text.handler_unblock_by_func(self.on_tool_toggled)
+             self.btn_area.handler_unblock_by_func(self.on_tool_toggled)
              
         # Also ensure tool is activated (if sync called from outside but tool not set?)
         # Usually checking recursion.

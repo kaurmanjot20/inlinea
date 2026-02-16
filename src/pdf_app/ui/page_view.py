@@ -67,6 +67,7 @@ class PDFPageView(Gtk.Overlay):
         # Sticky annotation colors (defaults)
         self.default_highlight_color = (1.0, 1.0, 0.0) # Yellow
         self.default_underline_color = (1.0, 0.0, 0.0) # Red
+        self.default_area_color = (1.0, 1.0, 0.0) # Yellow (Area)
 
         # Key Controller (Escape to exit text mode)
         key_controller = Gtk.EventControllerKey()
@@ -253,10 +254,9 @@ class PDFPageView(Gtk.Overlay):
             self.drawing_area.selected_region = None
             self.drawing_area.queue_draw()
             
-            # Show color dialog for highlight/underline ONLY on second click
-            if hit_ann.type in ('highlight', 'underline'):
-                if is_already_selected:
-                    self._open_color_dialog()
+            # Show color dialog for highlight/underline/area ONLY on second click - REMOVED!
+            # Moved to Double Click logic in on_click_pressed
+            pass
             # No popover to manage anymore
         else:
             # Deselect unless on handle
@@ -281,8 +281,11 @@ class PDFPageView(Gtk.Overlay):
         # Double Click
         if n_press == 2:
              ann = self.drawing_area.selected_annotation
-             if ann and ann.type == 'text':
-                  self.open_text_editor(ann)
+             if ann:
+                 if ann.type == 'text':
+                      self.open_text_editor(ann)
+                 elif ann.type in ('highlight', 'underline', 'square'):
+                      self._open_color_dialog()
 
     def on_click_released(self, gesture, n_press, x, y):
         if self.text_mode:
@@ -300,13 +303,16 @@ class PDFPageView(Gtk.Overlay):
         ann.style = "standard"
         
         self.store.add(ann)
-        widget = self.add_text_widget(ann)
+        # widget = self.add_text_widget(ann) # REMOVED
         
         # Focus and Select All
-        widget.text_view.grab_focus()
-        buffer = widget.text_view.get_buffer()
-        start, end = buffer.get_bounds()
-        buffer.select_range(start, end)
+        # widget.text_view.grab_focus() # REMOVED
+        # buffer = widget.text_view.get_buffer() # REMOVED
+        # start, end = buffer.get_bounds() # REMOVED
+        # buffer.select_range(start, end) # REMOVED
+        self.drawing_area.selected_annotation = ann
+        self.drawing_area.queue_draw()
+        self.open_text_editor(ann)
 
     # ... Forwarding Selection logic to DrawingArea ...
     def setup_gestures_on_drawing_area(self):
@@ -336,6 +342,11 @@ class PDFPageView(Gtk.Overlay):
         self.drawing_area.selection_end = (start_x, start_y)
         self.drawing_area.selected_region = None
         self.popover.popdown()
+        
+        # Area Highlight Logic
+        if self.current_tool == 'area':
+             self.drawing_area.temp_rect = (start_x, start_y, 0, 0)
+             
         self.drawing_area.queue_draw()
 
     def on_drag_update(self, gesture, offset_x, offset_y):
@@ -343,7 +354,17 @@ class PDFPageView(Gtk.Overlay):
             return
         start_x, start_y = self.drawing_area.selection_start
         self.drawing_area.selection_end = (start_x + offset_x, start_y + offset_y)
-        self.update_selection_from_drag()
+        
+        if self.current_tool == 'area':
+             # Update temp rect
+             w = offset_x
+             h = offset_y
+             # Normalize handled in drawing area or here? 
+             # Let's pass raw (x, y, w, h) and normalize later
+             self.drawing_area.temp_rect = (start_x, start_y, w, h)
+        else:
+             self.update_selection_from_drag()
+             
         self.drawing_area.queue_draw()
 
     def on_drag_end(self, gesture, offset_x, offset_y):
@@ -357,8 +378,46 @@ class PDFPageView(Gtk.Overlay):
              # self.activate_tool(None) # Remvoved: Sticky Tools
              return
              
+         if self.current_tool == 'area':
+             self.create_area_annotation()
+             self.drawing_area.temp_rect = None
+             self.drawing_area.queue_draw()
+             return
+
          if self.drawing_area.selected_region:
              self.show_popover_for_selection()
+
+    def create_area_annotation(self):
+        if not self.drawing_area.temp_rect: return
+        
+        x, y, w, h = self.drawing_area.temp_rect
+        
+        # Normalize
+        if w < 0:
+            x += w
+            w = -w
+        if h < 0:
+            y += h
+            h = -h
+            
+        if w < 5 or h < 5: return # Ignore tiny drags
+        
+        # Convert to PDF
+        pdf_x = x / self.scale
+        pdf_y = y / self.scale
+        pdf_w = w / self.scale
+        pdf_h = h / self.scale
+        
+        rects = [(pdf_x, pdf_y, pdf_w, pdf_h)]
+        
+        # Use sticky color (reuse highlight default)
+        color = self.default_area_color + (0.4,)
+        
+        ann = Annotation.create(type='square', page_index=self.page_number, rects=rects, color=color)
+        self.store.add(ann)
+        
+        self.drawing_area.selected_annotation = ann
+        self.drawing_area.queue_draw()
 
     def update_selection_from_drag(self):
         # Needs logic moved here or in DrawingArea. 
@@ -409,45 +468,6 @@ class PDFPageView(Gtk.Overlay):
         box.append(btn_text)
         self.popover.set_child(box)
 
-    # Color popover methods removed as per request to use direct dialog
-    # setup_color_popover removed
-    # _show_color_indicator removed
-    # _update_current_color_btn removed
-        """Open the native GTK color chooser dialog."""
-        ann = self.drawing_area.selected_annotation
-        if not ann:
-            return
-
-        dialog = Gtk.ColorDialog()
-        dialog.set_title("Pick a Color")
-        dialog.set_with_alpha(False)
-
-        # Set current color
-        r, g, b, a = ann.color
-        initial = Gdk.RGBA()
-        initial.red, initial.green, initial.blue, initial.alpha = r, g, b, 1.0
-
-        window = self.get_root()
-        dialog.choose_rgba(window, initial, None, self._on_color_dialog_finish)
-
-    def _on_color_dialog_finish(self, dialog, result):
-        """Handle the color dialog result."""
-        try:
-            rgba = dialog.choose_rgba_finish(result)
-        except GLib.Error:
-            return  # User cancelled
-
-        ann = self.drawing_area.selected_annotation
-        if not ann:
-            return
-
-        # Preserve alpha from existing color
-        _, _, _, a = ann.color
-        ann.color = (rgba.red, rgba.green, rgba.blue, a)
-
-        self.store.is_dirty = True
-        self.drawing_area.queue_draw()
-
     def activate_tool(self, tool_name):
         """Set the active tool (text, highlight, underline)."""
         self.current_tool = tool_name
@@ -457,6 +477,9 @@ class PDFPageView(Gtk.Overlay):
             cursor = Gdk.Cursor.new_from_name("text", None)
             self.set_cursor(cursor)
         elif tool_name in ('highlight', 'underline'):
+            cursor = Gdk.Cursor.new_from_name("text", None)
+            self.set_cursor(cursor)
+        elif tool_name == 'area':
             cursor = Gdk.Cursor.new_from_name("crosshair", None)
             self.set_cursor(cursor)
         else:
@@ -500,6 +523,8 @@ class PDFPageView(Gtk.Overlay):
             self.default_highlight_color = (rgba.red, rgba.green, rgba.blue)
         elif ann.type == 'underline':
             self.default_underline_color = (rgba.red, rgba.green, rgba.blue)
+        elif ann.type == 'square':
+            self.default_area_color = (rgba.red, rgba.green, rgba.blue)
 
         self.store.is_dirty = True
         self.drawing_area.queue_draw()

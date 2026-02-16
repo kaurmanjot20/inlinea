@@ -20,6 +20,7 @@ APP_CREATOR = "Inlinea"
 _SUPPORTED_TYPES = {
     fitz.PDF_ANNOT_HIGHLIGHT: "highlight",
     fitz.PDF_ANNOT_UNDERLINE: "underline",
+    fitz.PDF_ANNOT_SQUARE: "square",
     fitz.PDF_ANNOT_FREE_TEXT: "text",
 }
 
@@ -70,6 +71,13 @@ def _color_from_annot(annot, annot_type: str) -> Tuple[float, float, float, floa
         if annot_type == "highlight":
             return (1.0, 1.0, 0.0, 0.4)
         return (1.0, 0.0, 0.0, 1.0)
+    
+    elif annot_type == "square":
+        # Area Highlight uses FILL color primarily (stroke should be None/transparent)
+        rgb = colors.get("fill") or colors.get("stroke")
+        if rgb:
+             return (rgb[0], rgb[1], rgb[2], 0.4)
+        return (1.0, 1.0, 0.0, 0.4)
 
     elif annot_type == "text":
         rgb = colors.get("fill") or colors.get("stroke")
@@ -199,6 +207,8 @@ def save_annotations_to_pdf(
                 _add_markup_annot(page, ann, fitz.PDF_ANNOT_UNDERLINE, (r, g, b))
             elif ann.type == "text":
                 _add_freetext_annot(page, ann, (r, g, b))
+            elif ann.type == "square":
+                 _add_square_annot(page, ann, (r, g, b))
         except Exception as e:
             print(f"WARNING: Failed to write annotation {ann.id}: {e}")
             import traceback
@@ -253,5 +263,24 @@ def _add_freetext_annot(page, ann: Annotation, rgb: tuple):
         fill_color=None,
     )
 
+    annot.set_info(title=APP_CREATOR)
+    annot.update()
+
+
+def _add_square_annot(page, ann: Annotation, rgb: tuple):
+    """Add a Square (Area Highlight) annotation."""
+    if not ann.rects: return
+    
+    x, y, w, h = ann.rects[0]
+    rect = fitz.Rect(x, y, x + w, y + h) # x0, y0, x1, y1
+    
+    # Use add_rect_annot instead of add_square_annot for compatibility
+    if hasattr(page, "add_square_annot"):
+        annot = page.add_square_annot(rect)
+    else:
+        annot = page.add_rect_annot(rect)
+        
+    annot.set_colors(stroke=None, fill=rgb) # Filled rectangle
+    annot.set_opacity(0.4) # Semi-transparent
     annot.set_info(title=APP_CREATOR)
     annot.update()
