@@ -27,11 +27,12 @@ graph TD
     TabPage --> View[PDFView]
     
     View --> Store[AnnotationStore]
-    View --> PageList[List[PDFPageView]]
+    View --> PageList[PDFPageView List]
     
     PageList --> PageView[PDFPageView]
     PageView --> DrawingArea[PDFDrawingArea]
     PageView --> Overlay[Gtk.Overlay]
+
 ```
 
 ### Component Roles
