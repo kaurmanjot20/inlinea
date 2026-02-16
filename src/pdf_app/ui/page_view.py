@@ -61,7 +61,12 @@ class PDFPageView(Gtk.Overlay):
 
         # Context Menu
         self.setup_popover()
+        self.color_popover = None
         self.editor_popover = None
+        
+        # Sticky annotation colors (defaults)
+        self.default_highlight_color = (1.0, 1.0, 0.0) # Yellow
+        self.default_underline_color = (1.0, 0.0, 0.0) # Red
 
         # Key Controller (Escape to exit text mode)
         key_controller = Gtk.EventControllerKey()
@@ -490,6 +495,12 @@ class PDFPageView(Gtk.Overlay):
         _, _, _, a = ann.color
         ann.color = (rgba.red, rgba.green, rgba.blue, a)
 
+        # Update sticky default color for this type
+        if ann.type == 'highlight':
+            self.default_highlight_color = (rgba.red, rgba.green, rgba.blue)
+        elif ann.type == 'underline':
+            self.default_underline_color = (rgba.red, rgba.green, rgba.blue)
+
         self.store.is_dirty = True
         self.drawing_area.queue_draw()
 
@@ -584,7 +595,14 @@ class PDFPageView(Gtk.Overlay):
             r = region.get_rectangle(i)
             rects.append((r.x * scale_factor, r.y * scale_factor, r.width * scale_factor, r.height * scale_factor))
             
-        color = (1, 1, 0, 0.4) if type == 'highlight' else (1, 0, 0, 1)
+        # Use sticky defaults
+        if type == 'highlight':
+            color = self.default_highlight_color + (0.4,) # Add alpha
+        elif type == 'underline':
+            color = self.default_underline_color + (1.0,) # Add alpha
+        else:
+            color = (1, 0, 0, 1) # Fallback
+
         ann = Annotation.create(type=type, page_index=self.page_number, rects=rects, color=color)
         self.store.add(ann)
         
