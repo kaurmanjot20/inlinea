@@ -451,7 +451,7 @@ class PDFPageView(Gtk.Overlay):
         box.set_margin_start(5)
         box.set_margin_end(5)
         
-        btn_highlight = Gtk.Button(icon_name="format-text-bold-symbolic") 
+        btn_highlight = Gtk.Button(icon_name="document-edit-symbolic") 
         btn_highlight.set_tooltip_text("Highlight")
         btn_highlight.connect("clicked", self.on_highlight_clicked)
         
@@ -460,7 +460,7 @@ class PDFPageView(Gtk.Overlay):
         btn_underline.connect("clicked", self.on_underline_clicked)
         
         # Keeping context menu insert text optional
-        btn_text = Gtk.Button(icon_name="document-edit-symbolic")
+        btn_text = Gtk.Button(icon_name="insert-text-symbolic")
         btn_text.connect("clicked", self.on_text_clicked)
         
         box.append(btn_highlight)
