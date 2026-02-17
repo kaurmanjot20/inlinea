@@ -115,7 +115,7 @@ class PDFView(Gtk.ScrolledWindow):
                 return
             
             n_pages = self.document.get_n_pages()
-            print(f"Loaded PDF with {n_pages} pages.")
+            # print(f"Loaded PDF with {n_pages} pages.")
 
             # Render pages
             for i in range(n_pages):

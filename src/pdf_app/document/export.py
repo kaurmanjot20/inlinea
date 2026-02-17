@@ -46,7 +46,7 @@ def export_flattened_pdf(original_pdf_path, annotation_store, output_path):
             surface.show_page()
             
         surface.finish()
-        print(f"Exported PDF to {output_path}")
+        doc.save(output_path, garbage=4, deflate=True)
         return True
         
     except Exception as e:

@@ -543,7 +543,7 @@ class PDFDrawingArea(Gtk.DrawingArea):
              
              return
 
-        # print(f"DEBUG: Drawing handles for {ann.id}")
+
         
         start_handle, end_handle = self.get_handle_positions()
         

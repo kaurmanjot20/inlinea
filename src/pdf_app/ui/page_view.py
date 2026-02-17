@@ -146,7 +146,6 @@ class PDFPageView(Gtk.Overlay):
         # Convert click to PDF coordinates
         pdf_x = x / self.scale
         pdf_y = y / self.scale
-        # print(f"DEBUG: Click at widget ({x:.2f}, {y:.2f}) -> PDF ({pdf_x:.2f}, {pdf_y:.2f})")
         
         hit_ann = self.store.find_annotation_at(self.page_number, pdf_x, pdf_y)
         
