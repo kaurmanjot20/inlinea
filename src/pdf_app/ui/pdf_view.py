@@ -50,7 +50,8 @@ class PDFView(Gtk.ScrolledWindow):
         self.viewport.set_child(self.page_box)
         
         # Connect scroll event for tracking
-        self.vadjustment = self.viewport.get_vadjustment()
+        # Connect scroll event for tracking
+        self.vadjustment = self.get_vadjustment() # Use ScrolledWindow's adjustment
         self.vadjustment.connect("value-changed", self.on_scroll_changed)
         
         self.set_child(self.viewport)
@@ -145,9 +146,15 @@ class PDFView(Gtk.ScrolledWindow):
         fit_scale = (viewport_width - 40) / page_width  # 20px margin each side
         fit_scale = max(self.min_scale, min(self.max_scale, fit_scale))
         
+        target_index = self.current_page_index
+        
         self.scale = fit_scale
         self._gesture_start_scale = fit_scale
         self._apply_zoom()
+        
+        # Keep focus
+        GLib.idle_add(self.scroll_to_page, target_index)
+        
         return False
 
     def set_tool(self, tool_name):
@@ -295,31 +302,36 @@ class PDFView(Gtk.ScrolledWindow):
 
     def on_scroll_changed(self, adjustment):
         """Track current page based on scroll position."""
-        # Find which page is most visible
         vp_h = self.viewport.get_allocated_height()
         scroll_y = adjustment.get_value()
         center_y = scroll_y + (vp_h / 2)
         
-        current_y = 0
         found_index = -1
-        
-        # Iterate tracked pages to find match
-        # Assuming layout matches self.pages order
-        # We need actual positions.
-        # Fallback: simple estimate if allocations fail
+        min_dist = float('inf')
         
         for i, page_view in enumerate(self.pages):
-           # In Dual Mode, we want to track the ROW's position
            target_widget = page_view
            parent = page_view.get_parent()
+           
+           # In Dual Mode, the direct child of page_box is the Row Box
            if self.is_dual_mode and isinstance(parent, Gtk.Box) and parent != self.page_box:
                target_widget = parent
                
-           alloc = target_widget.get_allocation()
-           # Alloc y is relative to page_box
-           if alloc.y <= center_y <= (alloc.y + alloc.height + 10):
-               found_index = i
-               break
+           # Use translate_coordinates for absolute position relative to page_box
+           try:
+               res = target_widget.translate_coordinates(self.page_box, 0, 0)
+               if res:
+                   tx, ty = res
+                   theight = target_widget.get_allocated_height()
+                   
+                   widget_center_y = ty + (theight / 2)
+                   dist = abs(center_y - widget_center_y)
+                   
+                   if dist < min_dist:
+                       min_dist = dist
+                       found_index = i
+           except Exception:
+               continue
                
         if found_index != -1 and found_index != self.current_page_index:
             self.current_page_index = found_index
@@ -372,7 +384,10 @@ class PDFView(Gtk.ScrolledWindow):
 
     def zoom_reset(self):
         """Reset to fit-to-width."""
-        self._fit_to_width()
+        if self.is_dual_mode:
+            self._fit_two_pages()
+        else:
+            self._fit_to_width()
 
     def _fit_two_pages(self):
         """Fit two pages side-by-side in viewport (Contain)."""
@@ -396,8 +411,16 @@ class PDFView(Gtk.ScrolledWindow):
         fit_scale = min(scale_x, scale_y)
         fit_scale = max(self.min_scale, min(self.max_scale, fit_scale))
         
+        # Capture current page index BEFORE applying zoom/layout changes
+        # This prevents scroll events during resize from updating it to the wrong value (e.g. last page)
+        target_index = self.current_page_index
+        
         self.scale = fit_scale
         self._apply_zoom()
+        
+        # Restore focus to current page (async to allow layout update)
+        GLib.idle_add(self.scroll_to_page, target_index)
+        
         return False
 
 

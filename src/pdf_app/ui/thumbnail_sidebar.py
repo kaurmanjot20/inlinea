@@ -24,6 +24,8 @@ class ThumbnailSidebar(Gtk.Box):
         # Fix: GTK4 uses set_size_request for min size
         self.set_size_request(200, -1)
         
+        self._programmatic_update = False
+        
 
 
         # Scrolled Window
@@ -73,19 +75,19 @@ class ThumbnailSidebar(Gtk.Box):
     def select_page(self, index):
         """Programmatically select a page."""
         if index != self.selection_model.get_selected():
-            self.selection_model.set_selected(index)
+            self._programmatic_update = True
+            try:
+                self.selection_model.set_selected(index)
+            finally:
+                self._programmatic_update = False
             # Scroll to it?
             # self.list_view.scroll_to_item(index) # Need widget-specific logic
 
     def on_selection_changed(self, model, param):
-        # We trigger scroll here to ensure single clicks work
-        # Note: This might be triggered by scroll sync, need to handle loops?
-        # But if scroll sync happens, PDFView is already at page.
-        # Calling scroll_to_page again to same index is cheap.
-        # But it might be safer to block signals in window.py if needed.
-        selected = self.selection_model.get_selected()
-        if selected != Gtk.INVALID_LIST_POSITION:
-            self.emit('page-selected', selected)
+        # Selection change is purely visual (handled by CSS/State).
+        # We DO NOT trigger navigation here to avoid feedback loops and unintended scrolling.
+        # Navigation is handled exclusively by 'activate' (click).
+        pass
 
     def on_activate(self, list_view, position):
         self.emit('page-selected', position)
