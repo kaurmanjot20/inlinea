@@ -38,30 +38,13 @@ class MainWindow(Adw.ApplicationWindow):
         self.zoom_label.set_css_classes(["numeric"])
         
         title_box.append(self.page_label)
-        title_box.append(Gtk.Separator(orientation=Gtk.Orientation.VERTICAL))
+        self.header_separator = Gtk.Separator(orientation=Gtk.Orientation.VERTICAL)
+        title_box.append(self.header_separator)
         title_box.append(self.zoom_label)
         
-        # View Controls
-        view_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
-        view_box.set_css_classes(["linked"])
+        # View Controls moved to Ribbon
         
-        btn_sidebar = Gtk.ToggleButton(icon_name="sidebar-show-symbolic")
-        btn_sidebar.set_tooltip_text("Toggle Sidebar")
-        btn_sidebar.set_action_name("win.toggle_sidebar")
-        view_box.append(btn_sidebar)
-        
-        btn_dual = Gtk.ToggleButton(icon_name="view-grid-symbolic")
-        btn_dual.set_tooltip_text("Dual Page View")
-        btn_dual.set_action_name("win.view_dual")
-        view_box.append(btn_dual)
-        
-        btn_cont = Gtk.ToggleButton(icon_name="view-continuous-symbolic") # or view-paged-symbolic
-        btn_cont.set_tooltip_text("Continuous Scroll")
-        btn_cont.set_action_name("win.view_continuous")
-        view_box.append(btn_cont)
-        
-        # Add to Header (End)
-        self.header_bar.pack_end(view_box)
+        self.header_bar.set_title_widget(title_box)
         
         self.header_bar.set_title_widget(title_box)
         
@@ -254,104 +237,7 @@ class MainWindow(Adw.ApplicationWindow):
         ribbon_box.set_margin_top(5)
         ribbon_box.set_margin_bottom(5)
         
-        # Tools Group
-        box_tools = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
-        box_tools.add_css_class("linked")
-        
-        # Select (Cursor)
-        btn_select = Gtk.ToggleButton(icon_name="edit-select-symbolic")
-        btn_select.set_tooltip_text("Select / Move")
-        btn_select.set_active(True)
-        btn_select.connect("toggled", self.on_tool_toggled, None)
-        self.btn_select = btn_select
-        
-        # Highlight
-        btn_highlight = Gtk.ToggleButton(icon_name="format-text-bold-symbolic")
-        btn_highlight.set_tooltip_text("Highlight")
-        btn_highlight.set_group(btn_select)
-        btn_highlight.connect("toggled", self.on_tool_toggled, "highlight")
-        self.btn_highlight = btn_highlight
-        
-        # Underline
-        btn_underline = Gtk.ToggleButton(icon_name="format-text-underline-symbolic")
-        btn_underline.set_tooltip_text("Underline")
-        btn_underline.set_group(btn_select)
-        btn_underline.connect("toggled", self.on_tool_toggled, "underline")
-        self.btn_underline = btn_underline
-        
-        # Text
-        btn_text = Gtk.ToggleButton(icon_name="document-edit-symbolic")
-        btn_text.set_tooltip_text("Add Text")
-        # Select (Cursor)
-        btn_select = Gtk.ToggleButton(icon_name="edit-select-symbolic")
-        btn_select.set_tooltip_text("Select / Move")
-        btn_select.set_active(True)
-        btn_select.connect("toggled", self.on_tool_toggled, None)
-        self.btn_select = btn_select
-        
-        # Highlight
-        btn_highlight = Gtk.ToggleButton(icon_name="format-text-bold-symbolic")
-        btn_highlight.set_tooltip_text("Highlight")
-        btn_highlight.set_group(btn_select)
-        btn_highlight.connect("toggled", self.on_tool_toggled, "highlight")
-        self.btn_highlight = btn_highlight
-        
-        # Underline
-        btn_underline = Gtk.ToggleButton(icon_name="format-text-underline-symbolic")
-        btn_underline.set_tooltip_text("Underline")
-        btn_underline.set_group(btn_select)
-        btn_underline.connect("toggled", self.on_tool_toggled, "underline")
-        self.btn_underline = btn_underline
-        
-        # Text
-        btn_text = Gtk.ToggleButton(icon_name="document-edit-symbolic")
-        btn_text.set_tooltip_text("Add Text")
-        btn_text.set_group(btn_select)
-        btn_text.connect("toggled", self.on_tool_toggled, "text")
-        self.btn_text = btn_text
-        
-        box_tools.append(btn_select)
-        box_tools.append(btn_highlight)
-        box_tools.append(btn_underline)
-        box_tools.append(btn_text)
-        
-        # Area Highlight
-        btn_area = Gtk.ToggleButton(icon_name="crosshair-symbolic") # or selection-squared-symbolic
-        btn_area.set_tooltip_text("Area Highlight")
-        btn_area.set_group(btn_select)
-        btn_area.connect("toggled", self.on_tool_toggled, "area")
-        self.btn_area = btn_area
-        box_tools.append(btn_area)
-        
-        ribbon_box.append(box_tools)
-        
-        # Spacer
-        ribbon_box.append(Gtk.Separator(orientation=Gtk.Orientation.VERTICAL))
-        
-        # Zoom Controls
-        box_zoom = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
-        box_zoom.add_css_class("linked")
-        
-        btn_zoom_out = Gtk.Button(icon_name="zoom-out-symbolic")
-        btn_zoom_out.set_action_name("win.zoom_out")
-        
-        btn_zoom_in = Gtk.Button(icon_name="zoom-in-symbolic")
-        btn_zoom_in.set_action_name("win.zoom_in")
-        
-        btn_zoom_fit = Gtk.Button(icon_name="zoom-fit-best-symbolic")
-        btn_zoom_fit.set_tooltip_text("Fit Width")
-        btn_zoom_fit.set_action_name("win.zoom_reset")
-        
-        box_zoom.append(btn_zoom_out)
-        box_zoom.append(btn_zoom_fit)
-        box_zoom.append(btn_zoom_in)
-        
-        ribbon_box.append(box_zoom)
-        
-        # Spacer
-        ribbon_box.append(Gtk.Separator(orientation=Gtk.Orientation.VERTICAL))
-        
-        # File Actions
+        # --- 1. File Actions (LHS) ---
         box_file = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         box_file.add_css_class("linked")
         
@@ -367,7 +253,7 @@ class MainWindow(Adw.ApplicationWindow):
         btn_save_as.set_tooltip_text("Save As (Ctrl+Shift+S)")
         btn_save_as.set_action_name("win.save_as")
         
-        btn_export = Gtk.Button(icon_name="document-print-symbolic")
+        btn_export = Gtk.Button(icon_name="export-symbolic")
         btn_export.set_tooltip_text("Export to PDF")
         btn_export.set_action_name("win.export")
         
@@ -378,7 +264,104 @@ class MainWindow(Adw.ApplicationWindow):
         
         ribbon_box.append(box_file)
         
+        # --- 2. Annotation Tools (LHS, Next to File) ---
+        box_tools = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        box_tools.add_css_class("linked")
+        
+        # Select (Cursor)
+        btn_select = Gtk.ToggleButton(icon_name="tool-pointer-symbolic")
+        btn_select.set_tooltip_text("Select / Move")
+        btn_select.set_active(True)
+        btn_select.connect("toggled", self.on_tool_toggled, None)
+        self.btn_select = btn_select
+        
+        # Highlight (Using document-edit/pencil)
+        btn_highlight = Gtk.ToggleButton(icon_name="document-edit-symbolic")
+        btn_highlight.set_tooltip_text("Highlight")
+        btn_highlight.set_group(btn_select)
+        btn_highlight.connect("toggled", self.on_tool_toggled, "highlight")
+        self.btn_highlight = btn_highlight
+        
+        # Underline
+        btn_underline = Gtk.ToggleButton(icon_name="format-text-underline-symbolic")
+        btn_underline.set_tooltip_text("Underline")
+        btn_underline.set_group(btn_select)
+        btn_underline.connect("toggled", self.on_tool_toggled, "underline")
+        self.btn_underline = btn_underline
+        
+        # Text
+        btn_text = Gtk.ToggleButton(icon_name="insert-text-symbolic") 
+        btn_text.set_tooltip_text("Add Text")
+        btn_text.set_group(btn_select)
+        btn_text.connect("toggled", self.on_tool_toggled, "text")
+        self.btn_text = btn_text
+        
+        # Area Highlight
+        btn_area = Gtk.ToggleButton(icon_name="shape-item-symbolic")
+        btn_area.set_tooltip_text("Area Highlight")
+        btn_area.set_group(btn_select)
+        btn_area.connect("toggled", self.on_tool_toggled, "area")
+        self.btn_area = btn_area
+
+        # Order: Select, Highlight, Underline, Text, Area
+        box_tools.append(btn_select)
+        box_tools.append(btn_highlight)
+        box_tools.append(btn_underline)
+        box_tools.append(btn_text)
+        box_tools.append(btn_area)
+        
+        ribbon_box.append(box_tools)
+        
+        # --- 3. Spacer (Pushes RHS items) ---
+        spacer = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        spacer.set_hexpand(True)
+        ribbon_box.append(spacer)
+        
+        # --- 4. View Controls (RHS) ---
+        box_view = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        box_view.add_css_class("linked")
+        
+        btn_sidebar = Gtk.ToggleButton(icon_name="sidebar-show-symbolic")
+        btn_sidebar.set_tooltip_text("Toggle Sidebar")
+        btn_sidebar.set_action_name("win.toggle_sidebar")
+        
+        btn_dual = Gtk.ToggleButton(icon_name="view-grid-symbolic")
+        btn_dual.set_tooltip_text("Dual Page View")
+        btn_dual.set_action_name("win.view_dual")
+        
+        btn_cont = Gtk.ToggleButton(icon_name="view-continuous-symbolic")
+        btn_cont.set_tooltip_text("Continuous Scroll")
+        btn_cont.set_action_name("win.view_continuous")
+        
+        box_view.append(btn_sidebar)
+        box_view.append(btn_dual)
+        box_view.append(btn_cont)
+        
+        ribbon_box.append(box_view)
+        
+        # --- 5. Zoom Controls (RHS, Next to View) ---
+        box_zoom = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        box_zoom.add_css_class("linked")
+        
+        btn_zoom_out = Gtk.Button(icon_name="zoom-out-symbolic")
+        btn_zoom_out.set_action_name("win.zoom_out")
+        
+        btn_zoom_fit = Gtk.Button(icon_name="zoom-fit-best-symbolic")
+        btn_zoom_fit.set_tooltip_text("Fit Width")
+        btn_zoom_fit.set_action_name("win.zoom_reset")
+        
+        btn_zoom_in = Gtk.Button(icon_name="zoom-in-symbolic")
+        btn_zoom_in.set_action_name("win.zoom_in")
+        
+        box_zoom.append(btn_zoom_out)
+        box_zoom.append(btn_zoom_fit)
+        box_zoom.append(btn_zoom_in)
+        
+        ribbon_box.append(box_zoom)
+        
         return ribbon_box
+        
+
 
     def on_tool_toggled(self, btn, tool_name):
         if btn.get_active():
@@ -679,8 +662,9 @@ class MainWindow(Adw.ApplicationWindow):
             # Disable Sidebar Toggle
             self.action_toggle_sidebar.set_enabled(False)
                  
-            self.page_label.set_text("No Document")
+            self.page_label.set_text("")
             self.zoom_label.set_text("")
+            self.header_separator.set_visible(False)
             return
             
         view = page.get_child()
@@ -711,14 +695,15 @@ class MainWindow(Adw.ApplicationWindow):
             self.current_view_signals = (view, [h1, h2])
             
             self.update_header_info(view)
-            self.update_header_info(view)
+            self.header_separator.set_visible(True)
         else:
             self.split_view.set_sidebar(self.sidebar_placeholder)
             self.split_view.set_show_sidebar(False) # HIDE IT
             self.action_toggle_sidebar.set_enabled(False) # DISABLE TOGGLE
             
-            self.page_label.set_text("Empty")
+            self.page_label.set_text("")
             self.zoom_label.set_text("")
+            self.header_separator.set_visible(False)
 
     def on_view_page_changed(self, view, page_index):
         # Only update if view is active
