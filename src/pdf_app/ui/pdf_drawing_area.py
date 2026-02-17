@@ -354,20 +354,38 @@ class PDFDrawingArea(Gtk.DrawingArea):
                 
             annotations = self.store.get_for_page(page_idx)
             
-            c.save()
-            c.scale(self.scale, self.scale) 
-            
-            for ann in annotations:
-                r, g, b, a = ann.color
-                c.set_source_rgba(r, g, b, a)
-                
-                if ann.type == 'highlight':
+
+
+            # Separate pass for Highlights (to use MULTIPLY)
+            # This ensures they look like marker pens (darken text, keep color bright)
+            highlight_anns = [a for a in annotations if a.type == 'highlight']
+            other_anns = [a for a in annotations if a.type != 'highlight']
+
+            if highlight_anns:
+                c.save()
+                c.scale(self.scale, self.scale)
+                c.set_operator(cairo.Operator.MULTIPLY)
+                for ann in highlight_anns:
+                    # Force fully opaque color for multiply mode to look right
+                    # (If we use semi-transparent, it just looks washy)
+                    r, g, b, _ = ann.color
+                    c.set_source_rgba(r, g, b, 1.0)
+                    
                     for rect in ann.rects:
                         x, y, w, h = rect
                         c.rectangle(x, y, w, h)
                         c.fill()
-                        
-                elif ann.type == 'underline':
+                c.restore()
+
+            # Pass for others (Over)
+            c.save()
+            c.scale(self.scale, self.scale) 
+            
+            for ann in other_anns:
+                r, g, b, a = ann.color
+                c.set_source_rgba(r, g, b, a)
+                
+                if ann.type == 'underline':
                     c.set_line_width(2.5)
                     for rect in ann.rects:
                         x, y, w, h = rect
@@ -379,8 +397,9 @@ class PDFDrawingArea(Gtk.DrawingArea):
                     self.draw_text_annotation(c, ann)
 
                 elif ann.type == 'square':
-                     # Area Highlight
-                     c.set_line_width(0) # No border (or maybe thin)
+                     # Area Highlight - Keep as is (maybe multiply too? user asked for "bright colors")
+                     # Let's keep Area as normal for now unless asked.
+                     c.set_line_width(0) 
                      for rect in ann.rects:
                          x, y, w, h = rect
                          c.rectangle(x, y, w, h)

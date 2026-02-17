@@ -21,7 +21,7 @@ class Annotation:
         # Default Colors
         if color is None:
             if type == 'highlight':
-                color = (1.0, 1.0, 0.0, 0.4)  # Yellow
+                color = (1.0, 1.0, 0.0, 1.0)  # Yellow (Opaque for Multiply)
             elif type == 'underline':
                 color = (1.0, 0.0, 0.0, 1.0)  # Red
             else:

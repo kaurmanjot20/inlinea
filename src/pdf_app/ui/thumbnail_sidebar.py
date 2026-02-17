@@ -24,9 +24,7 @@ class ThumbnailSidebar(Gtk.Box):
         # Fix: GTK4 uses set_size_request for min size
         self.set_size_request(200, -1)
         
-        # Search Entry (Optional, maybe for filtering or just visual header)
-        # self.search_entry = Gtk.SearchEntry()
-        # self.append(self.search_entry)
+
 
         # Scrolled Window
         self.scrolled = Gtk.ScrolledWindow()
@@ -92,7 +90,6 @@ class ThumbnailSidebar(Gtk.Box):
     def on_activate(self, list_view, position):
         self.emit('page-selected', position)
 
-    # --- Factory Methods ---
     # --- Factory Methods ---
     def on_setup(self, factory, list_item):
         """Create widget structure for a grid item."""

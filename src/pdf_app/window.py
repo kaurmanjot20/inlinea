@@ -88,10 +88,6 @@ class MainWindow(Adw.ApplicationWindow):
         self.toolbar_view.set_content(self.split_view)
         
         # 6. Sidebar (Dynamic per tab)
-        # self.sidebar = ThumbnailSidebar() # REMOVED global
-        # self.sidebar.connect('page-selected', self.on_sidebar_page_selected)
-        # self.split_view.set_sidebar(self.sidebar)
-        
         # We will create one for each tab and swap it in.
         # Placeholder for empty tabs/docs
         self.sidebar_placeholder = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
@@ -134,15 +130,6 @@ class MainWindow(Adw.ApplicationWindow):
             None, 
             GLib.Variant.new_boolean(False)
         )
-        # action_text_mode.connect("change-state", self.on_insert_text_toggled) # REMOVED
-        # self.add_action(action_text_mode) # REMOVED
-        
-        # UI: Add Toggle Button to HeaderBar - REMOVED for Ribbon
-        # btn_text = Gtk.ToggleButton(icon_name="document-edit-symbolic")
-        # btn_text.set_tooltip_text("Insert Text Mode")
-        # btn_text.set_action_name("win.insert_text_mode")
-        # self.header_bar.pack_start(btn_text)
-        
         # Undo Action (Ctrl+Z)
         action_undo = Gio.SimpleAction.new("undo", None)
         action_undo.connect("activate", self.on_undo)
@@ -259,8 +246,6 @@ class MainWindow(Adw.ApplicationWindow):
             self.open_pdf_tab(file)
         dialog.destroy()
 
-    # def on_insert_text_toggled(self, action, state): # REMOVED
-    
     def build_ribbon(self):
         ribbon_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         ribbon_box.add_css_class("toolbar")
@@ -559,8 +544,7 @@ class MainWindow(Adw.ApplicationWindow):
             toast = Adw.Toast.new(f"Saved {view.file.get_basename()}")
             self.toast_overlay.add_toast(toast)
         except Exception as e:
-            import traceback
-            traceback.print_exc()
+            # traceback.print_exc()
             toast = Adw.Toast.new("Save Failed")
             self.toast_overlay.add_toast(toast)
 
@@ -598,9 +582,7 @@ class MainWindow(Adw.ApplicationWindow):
                     toast = Adw.Toast.new(f"Saved to {file.get_basename()}")
                     self.toast_overlay.add_toast(toast)
                 except Exception as e:
-                    print(f"Error saving: {e}")
-                    import traceback
-                    traceback.print_exc()
+                    # traceback.print_exc()
                     toast = Adw.Toast.new("Save Failed")
                     self.toast_overlay.add_toast(toast)
             d.destroy()
@@ -642,8 +624,8 @@ class MainWindow(Adw.ApplicationWindow):
                 from pdf_app.document.export import export_flattened_pdf
                 success = export_flattened_pdf(view.file.get_path(), view.store, path)
                 
+                
                 if success:
-                    print(f"Exported to {path}")
                     toast = Adw.Toast.new(f"Exported to {file.get_basename()}")
                     self.toast_overlay.add_toast(toast)
                 else:
@@ -663,13 +645,6 @@ class MainWindow(Adw.ApplicationWindow):
                 # Scroll to page
                 view.scroll_to_page(page_index)
                 view.grab_focus() # Return focus to PDF for keyboard nav
-
-    # Old duplicate on_tab_changed removed
-    # The actual implementation is further down (around line 680 originally)
-    # Checking lines 653-670 shows a partial method that looks like a duplicate or old version.
-    # Based on previous file reads, there were two on_tab_changed methods?
-    # No, I see one at 648 and another at 673 in the previous `view_file` output!
-    # I must remove the first erratic one.
 
     def on_toggle_sidebar(self, action, param):
         """Toggle sidebar visibility."""
