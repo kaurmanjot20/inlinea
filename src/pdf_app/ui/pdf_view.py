@@ -495,6 +495,34 @@ class PDFView(Gtk.ScrolledWindow):
         # Logic depends on mode
         is_ctrl = state & Gdk.ModifierType.CONTROL_MASK
         
+        if self.is_continuous:
+            # Manual scroll handling for continuous mode to ensure it works
+            step = 50 # Pixels for arrow keys
+            page_step = self.get_allocated_height() * 0.9 # Screen height for PageUp/Down
+            
+            vadj = self.get_vadjustment()
+            hadj = self.get_hadjustment()
+            
+            if keyval == Gdk.KEY_Up:
+                vadj.set_value(vadj.get_value() - step)
+                return True
+            elif keyval == Gdk.KEY_Down:
+                vadj.set_value(vadj.get_value() + step)
+                return True
+            elif keyval == Gdk.KEY_Left:
+                hadj.set_value(hadj.get_value() - step)
+                return True
+            elif keyval == Gdk.KEY_Right:
+                hadj.set_value(hadj.get_value() + step)
+                return True
+            elif keyval == Gdk.KEY_Page_Up:
+                vadj.set_value(vadj.get_value() - page_step)
+                return True
+            elif keyval == Gdk.KEY_Page_Down:
+                vadj.set_value(vadj.get_value() + page_step)
+                return True
+            return False
+            
         if keyval in [Gdk.KEY_Up, Gdk.KEY_Left]:
             self.navigate_page(-1)
             return True
@@ -515,6 +543,8 @@ class PDFView(Gtk.ScrolledWindow):
         
         # Always scroll, even if index is same (to snap back if user manual scrolled)
         self.scroll_to_page(new_index)
+
+        return False
 
     def on_scroll(self, controller, dx, dy):
         """Handle Ctrl+Scroll for zoom AND Paged Mode navigation."""
@@ -537,6 +567,15 @@ class PDFView(Gtk.ScrolledWindow):
             
             self._zoom_around_focal(new_scale, focal)
             return True  # Event handled
+
+        # 2. Paged Mode Logic (Non-Continuous)
+        if not self.is_continuous:
+            # Enforce page-by-page snapping for mouse wheel / trackpad scroll
+            if dy > 0:
+                self.navigate_page(1)
+            elif dy < 0:
+                self.navigate_page(-1)
+            return True # Consume event to prevent smooth scrolling
 
         return False
 
