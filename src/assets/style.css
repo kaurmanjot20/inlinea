@@ -1,4 +1,3 @@
-/* PDF Annotation Custom Styles */
 
 .pdf-canvas {
     background-color: transparent;
@@ -26,10 +25,8 @@
     box-shadow: none;
 }
 
-/* Ribbon Toolbar Styling - Dark Theme */
+
 .toolbar {
-    /* background-color: #242424; */
-    /* color: #ffffff; */
     border-bottom: 1px solid #1a1a1a;
     padding: 6px;
 }
@@ -37,18 +34,6 @@
 .toolbar button {
     margin-left: 2px;
     margin-right: 2px;
-    /* background-color: #383838; */
-    /* color: white; */
     border: none;
     box-shadow: none;
 }
-
-/* .toolbar button:hover {
-    background-color: #4a4a4a; 
-}
-
-.toolbar button:checked {
-    background-color: #3584e4; 
-    color: white; 
-} */
- 

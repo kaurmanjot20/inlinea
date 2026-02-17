@@ -220,13 +220,21 @@ class MainWindow(Adw.ApplicationWindow):
         filter_pdf.add_mime_type("application/pdf")
         dialog.add_filter(filter_pdf)
         
+        dialog.set_select_multiple(True)
         dialog.connect("response", self.on_open_response)
         dialog.show()
 
     def on_open_response(self, dialog, response):
         if response == Gtk.ResponseType.ACCEPT:
-            file = dialog.get_file()
-            self.open_pdf_tab(file)
+            files = dialog.get_files()
+            # method get_files() returns a GListModel (Gtk.Bitset? No, Gio.ListModel of Gio.File)
+            # We need to iterate it. 
+            # Actually, Gtk.FileChooser.get_files() returns a Gio.ListModel.
+            
+            n_files = files.get_n_items()
+            for i in range(n_files):
+                file = files.get_item(i)
+                self.open_pdf_tab(file)
         dialog.destroy()
 
     def build_ribbon(self):

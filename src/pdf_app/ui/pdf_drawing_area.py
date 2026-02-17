@@ -358,8 +358,8 @@ class PDFDrawingArea(Gtk.DrawingArea):
 
             # Separate pass for Highlights (to use MULTIPLY)
             # This ensures they look like marker pens (darken text, keep color bright)
-            highlight_anns = [a for a in annotations if a.type == 'highlight']
-            other_anns = [a for a in annotations if a.type != 'highlight']
+            highlight_anns = [a for a in annotations if a.type in ('highlight', 'square')]
+            other_anns = [a for a in annotations if a.type not in ('highlight', 'square')]
 
             if highlight_anns:
                 c.save()
@@ -397,13 +397,8 @@ class PDFDrawingArea(Gtk.DrawingArea):
                     self.draw_text_annotation(c, ann)
 
                 elif ann.type == 'square':
-                     # Area Highlight - Keep as is (maybe multiply too? user asked for "bright colors")
-                     # Let's keep Area as normal for now unless asked.
-                     c.set_line_width(0) 
-                     for rect in ann.rects:
-                         x, y, w, h = rect
-                         c.rectangle(x, y, w, h)
-                         c.fill()
+                     # Moved to highlight_anns for MULTIPLY blend mode
+                     pass
     
             c.restore()
 
