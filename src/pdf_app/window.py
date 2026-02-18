@@ -430,6 +430,8 @@ class MainWindow(Adw.ApplicationWindow):
                 op, ann = result
                 view.reload_page(ann.page_index)
 
+
+
     def add_empty_tab(self):
         """Adds a 'New Tab' page."""
         page = self.tab_view.append(EmptyView())

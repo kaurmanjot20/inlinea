@@ -174,11 +174,8 @@ class PDFView(Gtk.ScrolledWindow):
             page.activate_tool(tool_name)
 
     def handle_escape(self):
-        """Global Escape Logic."""
-        # 1. Reset Tool
         self.set_tool(None)
         
-        # 2. Clear Selection & Close Popovers
         for page in self.pages:
             if page.drawing_area.selected_annotation:
                  page.drawing_area.selected_annotation = None
@@ -234,33 +231,26 @@ class PDFView(Gtk.ScrolledWindow):
         if abs(new_scale - self.scale) < 0.001:
             return
         
-        # Get current scroll position
         hadj = self.get_hadjustment()
         vadj = self.get_vadjustment()
         old_scroll_x = hadj.get_value()
         old_scroll_y = vadj.get_value()
         
-        # Calculate the document position of the focal point
         doc_x = old_scroll_x + focal[0]
         doc_y = old_scroll_y + focal[1]
         
-        # Calculate scale ratio
         ratio = new_scale / self.scale
         
-        # Apply new scale
         old_scale = self.scale
         self.scale = new_scale
         self._apply_zoom()
         
-        # Calculate new document position of focal point
         new_doc_x = doc_x * ratio
         new_doc_y = doc_y * ratio
         
-        # Adjust scroll to keep focal point stationary
         new_scroll_x = new_doc_x - focal[0]
         new_scroll_y = new_doc_y - focal[1]
         
-        # Apply new scroll (clamp to valid range)
         hadj.set_value(max(0, new_scroll_x))
         vadj.set_value(max(0, new_scroll_y))
 
@@ -284,11 +274,9 @@ class PDFView(Gtk.ScrolledWindow):
            target_widget = page_view
            parent = page_view.get_parent()
            
-           # In Dual Mode, the direct child of page_box is the Row Box
            if self.is_dual_mode and isinstance(parent, Gtk.Box) and parent != self.page_box:
                target_widget = parent
                
-           # Use translate_coordinates for absolute position relative to page_box
            try:
                res = target_widget.translate_coordinates(self.page_box, 0, 0)
                if res:
@@ -316,18 +304,16 @@ class PDFView(Gtk.ScrolledWindow):
         target_page = self.pages[index]
         parent = target_page.get_parent()
         
-        # If dual mode, scroll to row (parent Box), not page directly
         target_widget = parent if self.is_dual_mode and isinstance(parent, Gtk.Box) and parent != self.page_box else target_page
        
         try:
-             # Translate (0,0) of target_widget to page_box
+             
              _, y = target_widget.translate_coordinates(self.page_box, 0, 0)
-             alloc = target_widget.get_allocation() # Still need for check
+             alloc = target_widget.get_allocation() 
              alloc.y = y 
         except:
              alloc = target_widget.get_allocation()
         
-        # If not allocated yet (e.g. initial load), try idle
         if alloc.height == 0:
             GLib.idle_add(self.scroll_to_page, index)
             return
@@ -440,8 +426,6 @@ class PDFView(Gtk.ScrolledWindow):
     # ========== KEYBOARD & SCROLL ==========
 
     def on_key_pressed(self, controller, keyval, keycode, state):
-        # Handle Arrows, PageUp, PageDown
-        # Logic depends on mode
         is_ctrl = state & Gdk.ModifierType.CONTROL_MASK
         
         if self.is_continuous:

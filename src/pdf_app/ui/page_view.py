@@ -127,6 +127,31 @@ class PDFPageView(Gtk.Overlay):
                 
         return False
 
+    def copy_selected_text(self):
+        if not self.drawing_area.selection_start or not self.drawing_area.selection_end:
+            return False
+
+        x1, y1 = self.drawing_area.selection_start
+        x2, y2 = self.drawing_area.selection_end
+
+        pdf_scale = 1.0 / self.scale
+        rect = Poppler.Rectangle()
+        rect.x1 = min(x1, x2) * pdf_scale
+        rect.y1 = min(y1, y2) * pdf_scale
+        rect.x2 = max(x1, x2) * pdf_scale
+        rect.y2 = max(y1, y2) * pdf_scale
+
+        try:
+            text = self.page.get_selected_text(Poppler.SelectionStyle.GLYPH, rect)
+        except Exception:
+            return False
+        if not text or not text.strip():
+            return False
+
+        clipboard = self.get_clipboard()
+        clipboard.set(text)
+        return True
+
     def on_resize_drag_begin(self, gesture, start_x, start_y):
         handled = self.drawing_area.handle_drag_begin(start_x, start_y)
         if handled:
@@ -311,6 +336,10 @@ class PDFPageView(Gtk.Overlay):
         box.set_margin_start(5)
         box.set_margin_end(5)
         
+        btn_copy = Gtk.Button(icon_name="edit-copy-symbolic")
+        btn_copy.set_tooltip_text("Copy Text")
+        btn_copy.connect("clicked", self.on_copy_clicked)
+
         btn_highlight = Gtk.Button(icon_name="document-edit-symbolic") 
         btn_highlight.set_tooltip_text("Highlight")
         btn_highlight.connect("clicked", self.on_highlight_clicked)
@@ -322,10 +351,15 @@ class PDFPageView(Gtk.Overlay):
         btn_text = Gtk.Button(icon_name="insert-text-symbolic")
         btn_text.connect("clicked", self.on_text_clicked)
         
+        box.append(btn_copy)
         box.append(btn_highlight)
         box.append(btn_underline)
         box.append(btn_text)
         self.popover.set_child(box)
+
+        popover_key = Gtk.EventControllerKey()
+        popover_key.connect("key-pressed", self._on_popover_key_pressed)
+        self.popover.add_controller(popover_key)
 
     def activate_tool(self, tool_name):
         self.current_tool = tool_name
@@ -380,6 +414,18 @@ class PDFPageView(Gtk.Overlay):
 
         self.store.is_dirty = True
         self.drawing_area.queue_draw()
+
+    def on_copy_clicked(self, btn):
+        self.copy_selected_text()
+        self.popover.popdown()
+
+    def _on_popover_key_pressed(self, controller, keyval, keycode, state):
+        ctrl = state & Gdk.ModifierType.CONTROL_MASK
+        if ctrl and keyval == Gdk.KEY_c:
+            self.copy_selected_text()
+            self.popover.popdown()
+            return True
+        return False
 
     def on_highlight_clicked(self, btn):
         self.create_annotation_from_selection('highlight')
