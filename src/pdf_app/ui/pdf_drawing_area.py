@@ -8,10 +8,6 @@ from gi.repository import Gtk, Gdk, Pango, PangoCairo
 from pdf_app.document.render import render_page_to_surface
 
 class PDFDrawingArea(Gtk.DrawingArea):
-    """
-    Handles only the background drawing: PDF + Highlights + Underlines.
-    Does NOT handle text widgets or overlay interactions.
-    """
     def __init__(self, page, scale, store):
         super().__init__()
         self.page = page
@@ -22,9 +18,6 @@ class PDFDrawingArea(Gtk.DrawingArea):
         self.set_focusable(True) # Allow focus to be grabbed
         self.set_can_target(True) # Allow events (focus)
         self.set_draw_func(self.on_draw)
-        
-        self.scale = scale
-        self.store = store
         
         # Selection State
         self.selection_start = None # (x, y) widget coords
@@ -40,13 +33,6 @@ class PDFDrawingArea(Gtk.DrawingArea):
         self.handle_radius = 12  # Larger radius for easier clicking
         self._old_rects = None  # Store original rects for undo
         
-        # Click Gesture REMOVED - Managed by Parent (PDFPageView)
-        # click = Gtk.GestureClick()
-        # click.connect("pressed", self.on_click)
-        # self.add_controller(click)
-        
-        # Drag Gesture REMOVED - Managed by Parent (PDFPageView) due to Z-order issues
-        
         self.queue_draw()
         
     def update_scale(self, scale):
@@ -54,12 +40,8 @@ class PDFDrawingArea(Gtk.DrawingArea):
         self.surface = None
         self.queue_draw()
 
-    # def on_click(self, gesture, n_press, x, y):
-        #     # REMOVED: Handled by PDFPageView
-        #     pass
-
+  
     def get_handle_positions(self):
-        """Returns (start_handle, end_handle) as (x, y) tuples in widget coords."""
         ann = self.selected_annotation
         if not ann or not ann.rects:
             return None, None
@@ -68,10 +50,6 @@ class PDFDrawingArea(Gtk.DrawingArea):
             return None, None
             
         if ann.type == 'square':
-            # 4 Corner Handles
-            # Return list of tuples? existing code expects 2 tuple (start, end)
-            # We need to refactor or map square handles to start/end logic?
-            # actually, let's return (tl, br) as start/end for now, but handle all 4 in logic
             if not ann.rects: return None, None
             r = ann.rects[0]
             x, y, w, h = r
@@ -100,7 +78,6 @@ class PDFDrawingArea(Gtk.DrawingArea):
         return (start_x, start_y), (end_x, end_y)
 
     def is_point_on_handle(self, x, y):
-        """Check if point is on start/end handle."""
         start, end = self.get_handle_positions()
         if not start:
             return False
@@ -139,7 +116,6 @@ class PDFDrawingArea(Gtk.DrawingArea):
 
 
     def handle_drag_begin(self, start_x, start_y):
-        """Called by parent when drag starts on a handle."""
         if not self.selected_annotation:
             return False
         
@@ -208,9 +184,6 @@ class PDFDrawingArea(Gtk.DrawingArea):
                          self.set_cursor(cursor)
                          return True
             
-        # Check for MOVE (drag body) - Valid for ALL annotation types
-        # ... logic continues below ...
-            
         # Check for MOVE (drag body)
         pdf_x = start_x / self.scale
         pdf_y = start_y / self.scale
@@ -228,7 +201,6 @@ class PDFDrawingArea(Gtk.DrawingArea):
         return False
             
     def handle_drag_update(self, offset_x, offset_y):
-        """Update highlight during resize drag using Poppler text selection."""
         if not self._resizing_handle or not self.selected_annotation:
             return
         
@@ -313,7 +285,6 @@ class PDFDrawingArea(Gtk.DrawingArea):
         self.queue_draw()
 
     def handle_drag_end(self, offset_x, offset_y):
-        """Finalize resize and save."""
         if self._resizing_handle and self.selected_annotation and self._old_rects:
             # Record the modification for undo (stores old rects)
             self.store.record_modify(self.selected_annotation.id, self._old_rects)
@@ -333,20 +304,8 @@ class PDFDrawingArea(Gtk.DrawingArea):
         c.set_source_surface(self.surface, 0, 0)
         c.paint()
         
-        # 2. Draw Highlights/Underlines
-        # (These remain "painted" on, for now - they are in the surface if we re-render?
-        # NO, render_page_to_surface only renders the PDF. 
-        # We need to draw the annotations on top if they are not part of the PDF surface yet.)
-        # WAIT: render_page_to_surface (impl) usually renders PDF.
-        # Store attributes should be drawn here.
         
         if self.store:
-            # annotations = self.store.get_for_page(self.page.get_index())
-            # Actually, let's assume get_for_page needs page number
-            # Does self.page have .get_index()? usually it's passed in init.
-            # PageView passed `self.page` and `self.page_number`.
-            # DrawingArea has `self.page`. Poppler page has index?
-            # Let's use self.store.get_for_page(self.page.get_index())
             try:
                 page_idx = self.page.get_index()
             except:
@@ -356,8 +315,6 @@ class PDFDrawingArea(Gtk.DrawingArea):
             
 
 
-            # Separate pass for Highlights (to use MULTIPLY)
-            # This ensures they look like marker pens (darken text, keep color bright)
             highlight_anns = [a for a in annotations if a.type in ('highlight', 'square')]
             other_anns = [a for a in annotations if a.type not in ('highlight', 'square')]
 
@@ -366,8 +323,7 @@ class PDFDrawingArea(Gtk.DrawingArea):
                 c.scale(self.scale, self.scale)
                 c.set_operator(cairo.Operator.MULTIPLY)
                 for ann in highlight_anns:
-                    # Force fully opaque color for multiply mode to look right
-                    # (If we use semi-transparent, it just looks washy)
+                    
                     r, g, b, _ = ann.color
                     c.set_source_rgba(r, g, b, 1.0)
                     
@@ -448,13 +404,8 @@ class PDFDrawingArea(Gtk.DrawingArea):
         # Draw
         PangoCairo.show_layout(c, layout)
         
-        # Update rect size if needed (e.g. 0x0 or changed)
-        # Get logical size in Pango units
+       
         _ink, logical = layout.get_extents()
-        # Convert to PDF units (unscale)
-        # Note: 'logical' is in Pango units (1/1024), convert to pixels then unscale?
-        # PangoCairo context is scaled. Pango units -> Screen Pixels.
-        # Screen Pixels / self.scale -> PDF units.
         
         pixel_w = logical.width / Pango.SCALE
         pixel_h = logical.height / Pango.SCALE
@@ -462,17 +413,12 @@ class PDFDrawingArea(Gtk.DrawingArea):
         current_w = w
         current_h = h
         
-        # Check if size needs update in store (e.g. if it was 0 or content changed)
-        # Tolerance for float comparison
+        
         if abs(pixel_w - current_w) > 1.0 or abs(pixel_h - current_h) > 1.0:
-            # Update rects
-            # Note: This modifies the annotation in memory. 
-            # We don't save to disk on every draw to avoid heavy IO.
-            # But it ensures hit-testing uses the visual size.
+
             ann.rects[0] = (x, y, pixel_w, pixel_h)
 
     def draw_annotation_selection(self, c, ann):
-        """Draw handles for selected annotation."""
         # Draw Start and End Handles for the annotation
         if not ann.rects:
             return
@@ -547,8 +493,6 @@ class PDFDrawingArea(Gtk.DrawingArea):
         
         start_handle, end_handle = self.get_handle_positions()
         
-        # We want to identify the "Start" (Top-Left of first rect) 
-        # and "End" (Bottom-Right of last rect)
         
         first_rect = ann.rects[0]
         last_rect = ann.rects[-1]
@@ -565,7 +509,6 @@ class PDFDrawingArea(Gtk.DrawingArea):
         
         handle_radius = 10  # Larger for easier clicking
         
-        # Draw Handles with white outline for visibility
         # Start Handle
         c.set_line_width(3)
         c.set_source_rgba(0.2, 0.6, 1.0, 1.0)  # Blue

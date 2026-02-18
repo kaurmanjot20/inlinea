@@ -8,7 +8,6 @@ from gi.repository import Gtk, Adw, Gio
 from pdf_app.app import PDFApplication
 
 def main():
-    """Application entry point."""
     app = PDFApplication()
     return app.run(sys.argv)
 

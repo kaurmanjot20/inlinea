@@ -21,7 +21,7 @@ class Annotation:
         # Default Colors
         if color is None:
             if type == 'highlight':
-                color = (1.0, 1.0, 0.0, 1.0)  # Yellow (Opaque for Multiply)
+                color = (1.0, 1.0, 0.0, 1.0)  # Yellow
             elif type == 'underline':
                 color = (1.0, 0.0, 0.0, 1.0)  # Red
             else:
@@ -38,12 +38,6 @@ class Annotation:
 
 
 class AnnotationStore:
-    """
-    Runtime annotation model — single source of truth during a session.
-    
-    Operates entirely in-memory. PDF I/O is handled by pdf_storage.py,
-    invoked via load_from_pdf() and save_to_pdf().
-    """
 
     def __init__(self):
         self.annotations: List[Annotation] = []
@@ -67,7 +61,6 @@ class AnnotationStore:
     # ========== PDF I/O ==========
 
     def load_from_pdf(self, file_path: str):
-        """Load annotations from a PDF file via PyMuPDF."""
         from pdf_app.document.pdf_storage import load_annotations_from_pdf
 
         self.annotations = load_annotations_from_pdf(file_path)
@@ -76,7 +69,6 @@ class AnnotationStore:
         self.is_dirty = False
 
     def save_to_pdf(self, source_path: str, output_path: str):
-        """Write annotations back to a PDF file via PyMuPDF."""
         from pdf_app.document.pdf_storage import save_annotations_to_pdf
 
         save_annotations_to_pdf(source_path, output_path, self.annotations)
@@ -109,7 +101,6 @@ class AnnotationStore:
             self.is_dirty = True
 
     def record_modify(self, annotation_id: str, old_rects: list):
-        """Records a modification (rect change) for undo."""
         self._undo_stack.append(('modify', annotation_id, old_rects))
         self._redo_stack.clear()
         self.is_dirty = True
@@ -117,7 +108,6 @@ class AnnotationStore:
     # ========== UNDO / REDO ==========
 
     def undo(self) -> Optional[tuple]:
-        """Undoes the last operation. Returns (operation, annotation) or None."""
         if not self._undo_stack:
             return None
 
@@ -148,7 +138,6 @@ class AnnotationStore:
         return None
 
     def redo(self) -> Optional[tuple]:
-        """Redoes the last undone operation. Returns (operation, annotation) or None."""
         if not self._redo_stack:
             return None
 
@@ -181,7 +170,6 @@ class AnnotationStore:
     # ========== QUERY ==========
 
     def find_annotation_at(self, page_index: int, x: float, y: float, tolerance: float = 5.0) -> Optional[Annotation]:
-        """Finds the top-most annotation at the given PDF coordinates."""
         for ann in reversed(self.annotations):
             if ann.page_index != page_index:
                 continue

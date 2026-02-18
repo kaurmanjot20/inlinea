@@ -17,7 +17,6 @@ class EmptyView(Gtk.Box):
         self.append(label)
         self.append(sub)
         
-        # Open button would be nice here
         btn_open = Gtk.Button(label="Open PDF")
         btn_open.add_css_class("pill")
         btn_open.add_css_class("suggested-action")

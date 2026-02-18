@@ -1,12 +1,3 @@
-"""
-pdf_storage.py — Bridge between AnnotationStore and PDF file via PyMuPDF.
-
-Responsibilities:
-  - Extract annotations from a PDF into Annotation objects (on open).
-  - Write annotations from AnnotationStore back into a PDF (on save).
-  - All supported annotations (highlight, underline, FreeText) are fully editable.
-  - Unsupported annotation types are left untouched in the PDF.
-"""
 
 import fitz  # PyMuPDF
 import tempfile
@@ -33,14 +24,6 @@ def _is_supported(annot) -> bool:
 
 
 def create_render_copy(source_path: str) -> str:
-    """
-    Create a temp copy of the PDF with ALL supported annotations removed.
-
-    Poppler renders this clean copy, so our overlay is the only thing
-    that draws annotations (making them interactive and editable).
-
-    Returns the path to the temp file.
-    """
     doc = fitz.open(source_path)
 
     for page_index in range(len(doc)):
@@ -61,7 +44,6 @@ def create_render_copy(source_path: str) -> str:
 
 
 def _color_from_annot(annot, annot_type: str) -> Tuple[float, float, float, float]:
-    """Extract RGBA color from a PyMuPDF annotation."""
     colors = annot.colors
 
     if annot_type in ("highlight", "underline"):
@@ -73,7 +55,6 @@ def _color_from_annot(annot, annot_type: str) -> Tuple[float, float, float, floa
         return (1.0, 0.0, 0.0, 1.0)
     
     elif annot_type == "square":
-        # Area Highlight uses FILL color primarily (stroke should be None/transparent)
         rgb = colors.get("fill") or colors.get("stroke")
         if rgb:
              return (rgb[0], rgb[1], rgb[2], 0.4)
@@ -89,7 +70,6 @@ def _color_from_annot(annot, annot_type: str) -> Tuple[float, float, float, floa
 
 
 def _quads_to_rects(quads) -> List[Tuple[float, float, float, float]]:
-    """Convert PyMuPDF Quad objects to (x, y, w, h) tuples."""
     rects = []
     for q in quads:
         r = q.rect
@@ -98,19 +78,10 @@ def _quads_to_rects(quads) -> List[Tuple[float, float, float, float]]:
 
 
 def _rect_to_xywh(rect: fitz.Rect) -> Tuple[float, float, float, float]:
-    """Convert fitz.Rect to (x, y, w, h)."""
     return (rect.x0, rect.y0, rect.width, rect.height)
 
 
 def load_annotations_from_pdf(file_path: str) -> List[Annotation]:
-    """
-    Extract ALL supported annotations from a PDF file.
-
-    Every supported annotation becomes fully editable in the store.
-    Unsupported annotation types are left in the PDF untouched.
-
-    Does NOT modify the PDF.
-    """
     annotations = []
 
     try:
@@ -167,17 +138,6 @@ def save_annotations_to_pdf(
     output_path: str,
     annotations: List[Annotation],
 ) -> None:
-    """
-    Write annotations from the store into a PDF file.
-
-    Process:
-      1. Open source PDF.
-      2. Remove ALL supported annotations from every page.
-      3. Re-add all annotations from the store.
-      4. Save to output_path.
-
-    Unsupported annotation types are preserved untouched.
-    """
     doc = fitz.open(source_path)
 
     # Phase 1: Remove ALL supported annotations
@@ -209,10 +169,8 @@ def save_annotations_to_pdf(
                 _add_freetext_annot(page, ann, (r, g, b))
             elif ann.type == "square":
                  _add_square_annot(page, ann, (r, g, b))
-        except Exception as e:
-            print(f"WARNING: Failed to write annotation {ann.id}: {e}")
-            import traceback
-            traceback.print_exc()
+        except Exception:
+            pass
 
     # Phase 3: Save
     if output_path == source_path:
@@ -224,7 +182,6 @@ def save_annotations_to_pdf(
 
 
 def _add_markup_annot(page, ann: Annotation, fitz_type: int, rgb: tuple):
-    """Add a highlight or underline annotation to a page."""
     quads = []
     for rect_tuple in ann.rects:
         x, y, w, h = rect_tuple
@@ -245,7 +202,6 @@ def _add_markup_annot(page, ann: Annotation, fitz_type: int, rgb: tuple):
 
 
 def _add_freetext_annot(page, ann: Annotation, rgb: tuple):
-    """Add a FreeText annotation to a page."""
     if not ann.rects:
         return
 
@@ -268,19 +224,17 @@ def _add_freetext_annot(page, ann: Annotation, rgb: tuple):
 
 
 def _add_square_annot(page, ann: Annotation, rgb: tuple):
-    """Add a Square (Area Highlight) annotation."""
     if not ann.rects: return
     
     x, y, w, h = ann.rects[0]
     rect = fitz.Rect(x, y, x + w, y + h) # x0, y0, x1, y1
     
-    # Use add_rect_annot instead of add_square_annot for compatibility
     if hasattr(page, "add_square_annot"):
         annot = page.add_square_annot(rect)
     else:
         annot = page.add_rect_annot(rect)
         
-    annot.set_colors(stroke=None, fill=rgb) # Filled rectangle
-    annot.set_opacity(0.4) # Semi-transparent
+    annot.set_colors(stroke=None, fill=rgb)
+    annot.set_opacity(0.4)
     annot.set_info(title=APP_CREATOR)
     annot.update()

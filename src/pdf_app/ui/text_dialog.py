@@ -11,7 +11,6 @@ class TextAnnotationDialog(Gtk.Window):
         self.set_modal(True)
         self.set_default_size(400, 300)
         
-        # Responses logic can be done with signaling manually
         self.callback = None
         
         # Main Layout
@@ -45,13 +44,11 @@ class TextAnnotationDialog(Gtk.Window):
         style_label = Gtk.Label(label="Style:")
         style_box.append(style_label)
         
-        # Using a ToggleButton group or Adw.ViewSwitcher is overkill.
-        # Simple Gtk.Box with ToggleButtons acting as Radio
         self.btn_standard = Gtk.ToggleButton(label="Standard")
         self.btn_handwritten = Gtk.ToggleButton(label="Handwritten")
         self.btn_handwritten.set_group(self.btn_standard)
         
-        self.btn_standard.set_active(True) # Default
+        self.btn_standard.set_active(True) 
         
         style_box.append(self.btn_standard)
         style_box.append(self.btn_handwritten)

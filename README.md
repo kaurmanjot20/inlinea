@@ -32,4 +32,3 @@ python3 main.py
     - `ui/`: GTK 4 widgets and UI components
     - `document/`: PDF loading and rendering logic
     - `utils/`: Helper functions
-- `tests/`: Test suite

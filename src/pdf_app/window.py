@@ -46,8 +46,6 @@ class MainWindow(Adw.ApplicationWindow):
         
         self.header_bar.set_title_widget(title_box)
         
-        self.header_bar.set_title_widget(title_box)
-        
         # 3. Ribbon (Top Bar)
         self.active_tool_name = None
         self.ribbon_box = self.build_ribbon()
@@ -207,8 +205,6 @@ class MainWindow(Adw.ApplicationWindow):
         self.update_ribbon_tool_state(None)
 
     def on_open_document(self, action, param):
-        """Handle file open dialog."""
-        # TODO: Implement Gtk.FileDialog for GTK 4.10+ or keep Gtk.FileChooserNative
         dialog = Gtk.FileChooserNative(
             title="Open PDF",
             transient_for=self,
@@ -245,7 +241,6 @@ class MainWindow(Adw.ApplicationWindow):
         ribbon_box.set_margin_top(5)
         ribbon_box.set_margin_bottom(5)
         
-        # --- 1. File Actions (LHS) ---
         box_file = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         box_file.add_css_class("linked")
         
@@ -272,46 +267,39 @@ class MainWindow(Adw.ApplicationWindow):
         
         ribbon_box.append(box_file)
         
-        # --- 2. Annotation Tools (LHS, Next to File) ---
         box_tools = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         box_tools.add_css_class("linked")
         
-        # Select (Cursor)
         btn_select = Gtk.ToggleButton(icon_name="tool-pointer-symbolic")
         btn_select.set_tooltip_text("Select / Move")
         btn_select.set_active(True)
         btn_select.connect("toggled", self.on_tool_toggled, None)
         self.btn_select = btn_select
         
-        # Highlight (Using document-edit/pencil)
         btn_highlight = Gtk.ToggleButton(icon_name="document-edit-symbolic")
         btn_highlight.set_tooltip_text("Highlight")
         btn_highlight.set_group(btn_select)
         btn_highlight.connect("toggled", self.on_tool_toggled, "highlight")
         self.btn_highlight = btn_highlight
         
-        # Underline
         btn_underline = Gtk.ToggleButton(icon_name="format-text-underline-symbolic")
         btn_underline.set_tooltip_text("Underline")
         btn_underline.set_group(btn_select)
         btn_underline.connect("toggled", self.on_tool_toggled, "underline")
         self.btn_underline = btn_underline
         
-        # Text
         btn_text = Gtk.ToggleButton(icon_name="insert-text-symbolic") 
         btn_text.set_tooltip_text("Add Text")
         btn_text.set_group(btn_select)
         btn_text.connect("toggled", self.on_tool_toggled, "text")
         self.btn_text = btn_text
         
-        # Area Highlight
         btn_area = Gtk.ToggleButton(icon_name="shape-item-symbolic")
         btn_area.set_tooltip_text("Area Highlight")
         btn_area.set_group(btn_select)
         btn_area.connect("toggled", self.on_tool_toggled, "area")
         self.btn_area = btn_area
 
-        # Order: Select, Highlight, Underline, Text, Area
         box_tools.append(btn_select)
         box_tools.append(btn_highlight)
         box_tools.append(btn_underline)
@@ -320,12 +308,10 @@ class MainWindow(Adw.ApplicationWindow):
         
         ribbon_box.append(box_tools)
         
-        # --- 3. Spacer (Pushes RHS items) ---
         spacer = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         spacer.set_hexpand(True)
         ribbon_box.append(spacer)
         
-        # --- 4. View Controls (RHS) ---
         box_view = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         box_view.add_css_class("linked")
         
@@ -347,7 +333,6 @@ class MainWindow(Adw.ApplicationWindow):
         
         ribbon_box.append(box_view)
         
-        # --- 5. Zoom Controls (RHS, Next to View) ---
         box_zoom = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         box_zoom.add_css_class("linked")
         
@@ -384,8 +369,6 @@ class MainWindow(Adw.ApplicationWindow):
             
     def activate_tool(self, tool_name):
         self.active_tool_name = tool_name
-        # Propagate to ALL tabs (Global Tool State)
-        # 2. Clear Selection & Close Popovers
         for i in range(self.tab_view.get_n_pages()):
             page_wrapper = self.tab_view.get_nth_page(i)
             view = page_wrapper.get_child()
@@ -401,8 +384,6 @@ class MainWindow(Adw.ApplicationWindow):
         self.grab_focus()
         
     def update_ribbon_tool_state(self, tool_name):
-        """Update ribbon buttons based on tool name (Sync UI)."""
-        # Block signals to prevent recursion
         self.btn_select.handler_block_by_func(self.on_tool_toggled)
         self.btn_highlight.handler_block_by_func(self.on_tool_toggled)
         self.btn_underline.handler_block_by_func(self.on_tool_toggled)
@@ -422,15 +403,12 @@ class MainWindow(Adw.ApplicationWindow):
              self.btn_text.handler_unblock_by_func(self.on_tool_toggled)
              self.btn_area.handler_unblock_by_func(self.on_tool_toggled)
              
-        # Also ensure tool is activated (if sync called from outside but tool not set?)
-        # Usually checking recursion.
         self.activate_tool(tool_name)
 
     def on_new_tab(self, action, param):
         self.add_empty_tab()
 
     def on_undo(self, action, param):
-        """Undoes the last annotation operation."""
         selected = self.tab_view.get_selected_page()
         if not selected:
             return
@@ -442,7 +420,6 @@ class MainWindow(Adw.ApplicationWindow):
                 view.reload_page(ann.page_index)
 
     def on_redo(self, action, param):
-        """Redoes the last undone annotation operation."""
         selected = self.tab_view.get_selected_page()
         if not selected:
             return
@@ -461,34 +438,26 @@ class MainWindow(Adw.ApplicationWindow):
         self.tab_view.set_selected_page(page)
 
     def open_pdf_tab(self, file):
-        """Opens a PDF file in a new tab."""
-        # 1. Create the PDF View widget
         pdf_view = PDFView(file)
         
-        # Apply active tool
         if self.active_tool_name:
             pdf_view.set_tool(self.active_tool_name)
         
-        # 2. Add to tabs
         page = self.tab_view.append(pdf_view)
         page.set_title(file.get_basename())
         page.set_icon(None)
         
-        # Connect dirty signal
         def on_dirty_changed(is_dirty):
             self.update_tab_status(page, is_dirty)
             
         pdf_view.store.on_dirty_changed = on_dirty_changed
         
-        # 3. Select it
         self.tab_view.set_selected_page(page)
 
     def update_tab_status(self, page, is_dirty):
-        """Updates tab title with dirty indicator (prefix style)."""
         title = page.get_title()
         if not title: return
         
-        # Prefix style: "* Filename.pdf"
         clean_title = title
         if title.startswith("* "):
             clean_title = title[2:]
@@ -499,7 +468,6 @@ class MainWindow(Adw.ApplicationWindow):
             page.set_title(clean_title)
 
     def on_zoom_in(self, action, param):
-        """Zoom in on current PDF."""
         selected = self.tab_view.get_selected_page()
         if selected:
             view = selected.get_child()
@@ -507,7 +475,6 @@ class MainWindow(Adw.ApplicationWindow):
                 view.zoom_in()
 
     def on_zoom_out(self, action, param):
-        """Zoom out on current PDF."""
         selected = self.tab_view.get_selected_page()
         if selected:
             view = selected.get_child()
@@ -515,7 +482,6 @@ class MainWindow(Adw.ApplicationWindow):
                 view.zoom_out()
 
     def on_zoom_reset(self, action, param):
-        """Reset zoom to fit-to-width."""
         selected = self.tab_view.get_selected_page()
         if selected:
             view = selected.get_child()
@@ -523,7 +489,6 @@ class MainWindow(Adw.ApplicationWindow):
                 view.zoom_reset()
 
     def on_save(self, action, param):
-        """Save annotations directly into the original PDF (Ctrl+S)."""
         selected_page = self.tab_view.get_selected_page()
         if not selected_page: return
         view = selected_page.get_child()
@@ -534,13 +499,11 @@ class MainWindow(Adw.ApplicationWindow):
             view.store.save_to_pdf(src, src)
             toast = Adw.Toast.new(f"Saved {view.file.get_basename()}")
             self.toast_overlay.add_toast(toast)
-        except Exception as e:
-            # traceback.print_exc()
+        except Exception:
             toast = Adw.Toast.new("Save Failed")
             self.toast_overlay.add_toast(toast)
 
     def on_save_as(self, action, param):
-        """Save annotations to PDF (Save As dialog)."""
         selected_page = self.tab_view.get_selected_page()
         if not selected_page: return
         view = selected_page.get_child()
@@ -557,12 +520,12 @@ class MainWindow(Adw.ApplicationWindow):
         filter_pdf.add_mime_type("application/pdf")
         dialog.add_filter(filter_pdf)
         
-        # Suggest filename: original_annotated.pdf
         try:
             orig_name = view.file.get_basename()
             suggested = orig_name.replace(".pdf", "") + "_annotated.pdf"
             dialog.set_current_name(suggested)
-        except: pass
+        except Exception:
+            pass
         
         def on_response(d, response):
             if response == Gtk.ResponseType.ACCEPT:
@@ -573,7 +536,6 @@ class MainWindow(Adw.ApplicationWindow):
                     toast = Adw.Toast.new(f"Saved to {file.get_basename()}")
                     self.toast_overlay.add_toast(toast)
                 except Exception as e:
-                    # traceback.print_exc()
                     toast = Adw.Toast.new("Save Failed")
                     self.toast_overlay.add_toast(toast)
             d.destroy()
@@ -582,7 +544,6 @@ class MainWindow(Adw.ApplicationWindow):
         dialog.show()
 
     def on_export_pdf(self, action, param):
-        """Export to Flattened PDF (annotations baked as drawings, non-editable)."""
         selected_page = self.tab_view.get_selected_page()
         if not selected_page: return
         page = selected_page
@@ -600,12 +561,12 @@ class MainWindow(Adw.ApplicationWindow):
         filter_pdf.add_mime_type("application/pdf")
         dialog.add_filter(filter_pdf)
         
-        # Suggest filename: original_flattened.pdf
         try:
             orig_name = view.file.get_basename()
             suggested = orig_name.replace(".pdf", "") + "_flattened.pdf"
             dialog.set_current_name(suggested)
-        except: pass
+        except Exception:
+            pass
         
         def on_response(d, response):
             if response == Gtk.ResponseType.ACCEPT:
@@ -628,46 +589,38 @@ class MainWindow(Adw.ApplicationWindow):
         dialog.show()
         
     def on_sidebar_page_selected(self, sidebar, page_index):
-        """Called when sidebar thumbnail is clicked."""
         page = self.tab_view.get_selected_page()
         if page:
             view = page.get_child()
             if isinstance(view, PDFView):
-                # Scroll to page
                 view.scroll_to_page(page_index)
                 view.grab_focus() # Return focus to PDF for keyboard nav
 
     def on_toggle_sidebar(self, action, param):
-        """Toggle sidebar visibility."""
         show = not self.split_view.get_show_sidebar()
         self.split_view.set_show_sidebar(show)
         action.set_state(GLib.Variant.new_boolean(show))
 
     def on_tab_changed(self, tab_view, param):
-        """Called when active tab changes."""
         page = self.tab_view.get_selected_page()
         
-        # Disconnect old signals and SAVE STATE
         if hasattr(self, 'current_view_signals') and self.current_view_signals:
             old_view, handler_ids = self.current_view_signals
             
-            # Save sidebar visibility to old view
             old_view.sidebar_visible = self.split_view.get_show_sidebar()
             
             for hid in handler_ids:
                 try:
                     if old_view.handler_is_connected(hid):
                         old_view.disconnect(hid)
-                except:
+                except Exception:
                     pass
             self.current_view_signals = None
 
         if not page:
-            # Clear sidebar and HIDE it
             self.split_view.set_sidebar(self.sidebar_placeholder)
             self.split_view.set_show_sidebar(False)
             
-            # Disable Sidebar Toggle
             self.action_toggle_sidebar.set_enabled(False)
                  
             self.page_label.set_text("")
@@ -677,27 +630,20 @@ class MainWindow(Adw.ApplicationWindow):
             
         view = page.get_child()
         if isinstance(view, PDFView):
-            # Enable Sidebar Toggle
             self.action_toggle_sidebar.set_enabled(True)
-            # 1. Swap Sidebar
             if not view.sidebar:
-                # Create if missing (lazy load)
                 view.sidebar = ThumbnailSidebar()
                 view.sidebar.load_document(view.document)
                 view.sidebar.connect('page-selected', self.on_sidebar_page_selected)
                 
             self.split_view.set_sidebar(view.sidebar)
             
-            # Restore Sidebar Visibility
-            was_visible = getattr(view, 'sidebar_visible', False) # Default closed?
+            was_visible = getattr(view, 'sidebar_visible', False)
             self.split_view.set_show_sidebar(was_visible)
             
-            # 2. Sync Tool State
-            # Get current tool from view (assuming 'tool_mode' attr or defaulting to 'select')
-            current_tool = getattr(view, 'tool_mode', 'select') # Default to select if missing
+            current_tool = getattr(view, 'tool_mode', 'select')
             self.update_ribbon_tool_state(current_tool)
             
-            # Connect Signals
             h1 = view.connect('page-changed', self.on_view_page_changed)
             h2 = view.connect('zoom-changed', self.on_view_zoom_changed)
             self.current_view_signals = (view, [h1, h2])
@@ -706,15 +652,14 @@ class MainWindow(Adw.ApplicationWindow):
             self.header_separator.set_visible(True)
         else:
             self.split_view.set_sidebar(self.sidebar_placeholder)
-            self.split_view.set_show_sidebar(False) # HIDE IT
-            self.action_toggle_sidebar.set_enabled(False) # DISABLE TOGGLE
+            self.split_view.set_show_sidebar(False)
+            self.action_toggle_sidebar.set_enabled(False)
             
             self.page_label.set_text("")
             self.zoom_label.set_text("")
             self.header_separator.set_visible(False)
 
     def on_view_page_changed(self, view, page_index):
-        # Only update if view is active
         active_page = self.tab_view.get_selected_page()
         if active_page and active_page.get_child() == view:
             if view.sidebar:
@@ -754,16 +699,13 @@ class MainWindow(Adw.ApplicationWindow):
                 self.update_header_info(view)
                 
     def on_close_page(self, tab_view, page):
-        """Handle single tab close request."""
         view = page.get_child()
         if hasattr(view, 'store') and getattr(view.store, 'is_dirty', False):
-            # Show prompt for this single page
             self.prompt_save_changes([page], close_app=False)
-            return True # Stop close
-        return False # Allow close
+            return True
+        return False
                 
     def on_close_request(self, win):
-        """Handle window close request - Check dirty state."""
         dirty_pages = []
         n = self.tab_view.get_n_pages()
         for i in range(n):
@@ -800,7 +742,6 @@ class MainWindow(Adw.ApplicationWindow):
             body=msg
         )
         
-        # For multiple files, use extra child for left-aligned list
         if count > 1:
             filenames = []
             for page in dirty_pages:
@@ -808,12 +749,10 @@ class MainWindow(Adw.ApplicationWindow):
                 if t.startswith("* "): t = t[2:]
                 filenames.append(t)
             
-            # Use a box with a label to ensure left alignment
             box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
             box.set_margin_top(10)
             box.set_margin_bottom(10)
             
-            # Simple label with newlines
             list_text = "\n".join([f"• {name}" for name in filenames])
             lbl = Gtk.Label(label=list_text)
             lbl.set_xalign(0) # Left align
@@ -852,14 +791,12 @@ class MainWindow(Adw.ApplicationWindow):
                             # Save annotations back into PDF (overwrite source)
                             src = view.file.get_path()
                             view.store.save_to_pdf(src, src)
-                        except Exception as e:
-                            print(f"Error saving {page.get_title()}: {e}")
-                            import traceback
-                            traceback.print_exc()
+                        except Exception:
+                            pass
                 
                 if close_app:
                     try: self.disconnect_by_func(self.on_close_request)
-                    except: pass
+                    except Exception: pass
                     self.close()
                 else:
                     page = dirty_pages[0]
@@ -873,7 +810,6 @@ class MainWindow(Adw.ApplicationWindow):
                     # Force update status to ensure * remains visible if needed
                     view = page.get_child()
                     if hasattr(view, 'store'):
-                        # toggle to force update? No, just call update
                         self.update_tab_status(page, view.store.is_dirty)
             
             dlg.close()

@@ -7,10 +7,6 @@ from pdf_app.ui.page_view import PDFPageView
 from pdf_app.document.store import AnnotationStore
 
 class PDFView(Gtk.ScrolledWindow):
-    """
-    Main PDF viewer widget. Scrollable container for pages.
-    Implements proper focal-point anchored zoom.
-    """
     __gsignals__ = {
         'page-changed': (GObject.SignalFlags.RUN_FIRST, None, (int,)),
         'zoom-changed': (GObject.SignalFlags.RUN_FIRST, None, (float,)) 
@@ -36,7 +32,6 @@ class PDFView(Gtk.ScrolledWindow):
         self.set_can_focus(True)
         
         # Container for pages (vertical stack)
-        # Container for pages (vertical stack)
         self.page_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         self.page_box.set_halign(Gtk.Align.CENTER)
         self.page_box.set_margin_top(20)
@@ -47,14 +42,10 @@ class PDFView(Gtk.ScrolledWindow):
         self.viewport.set_scroll_to_focus(False) # FIX: Prevents jumping to top on click
         self.viewport.set_child(self.page_box)
         
-        self.viewport.set_child(self.page_box)
-        
-        # Connect scroll event for tracking
         # Connect scroll event for tracking
         self.vadjustment = self.get_vadjustment() # Use ScrolledWindow's adjustment
         self.vadjustment.connect("value-changed", self.on_scroll_changed)
         
-        self.set_child(self.viewport)
         self.set_child(self.viewport)
         self.pages = [] # Track page instances
         self.current_page_index = 0
@@ -115,7 +106,7 @@ class PDFView(Gtk.ScrolledWindow):
                 return
             
             n_pages = self.document.get_n_pages()
-            # print(f"Loaded PDF with {n_pages} pages.")
+
 
             # Render pages
             for i in range(n_pages):
@@ -128,8 +119,6 @@ class PDFView(Gtk.ScrolledWindow):
             GLib.idle_add(self._fit_to_width)
 
         except Exception as e:
-            import traceback
-            traceback.print_exc()
             self.show_error(str(e))
 
     def _fit_to_width(self):
@@ -144,18 +133,39 @@ class PDFView(Gtk.ScrolledWindow):
         
         # Calculate fit-to-width scale (with small margin)
         fit_scale = (viewport_width - 40) / page_width  # 20px margin each side
-        fit_scale = max(self.min_scale, min(self.max_scale, fit_scale))
-        
-        target_index = self.current_page_index
-        
-        self.scale = fit_scale
-        self._gesture_start_scale = fit_scale
-        self._apply_zoom()
-        
-        # Keep focus
-        GLib.idle_add(self.scroll_to_page, target_index)
+        self._set_scale_and_scroll(self._clamp_scale(fit_scale))
         
         return False
+
+    def _clamp_scale(self, scale):
+        """Clamp scale value to min/max bounds."""
+        return max(self.min_scale, min(self.max_scale, scale))
+
+    def _get_viewport_center_focal(self):
+        """Return the center of the viewport as a focal point (x, y)."""
+        return (self.get_allocated_width() / 2, self.get_allocated_height() / 2)
+
+    def _set_scale_and_scroll(self, scale):
+        """Apply a new zoom scale and scroll back to the current page."""
+        target_index = self.current_page_index
+        self.scale = scale
+        self._gesture_start_scale = scale
+        self._apply_zoom()
+        GLib.idle_add(self.scroll_to_page, target_index)
+
+    def _iter_all_page_views(self):
+        """Yield every PDFPageView, traversing into row boxes for dual mode."""
+        child = self.page_box.get_first_child()
+        while child:
+            if isinstance(child, PDFPageView):
+                yield child
+            elif isinstance(child, Gtk.Box):
+                row_child = child.get_first_child()
+                while row_child:
+                    if isinstance(row_child, PDFPageView):
+                        yield row_child
+                    row_child = row_child.get_next_sibling()
+            child = child.get_next_sibling()
 
     def set_tool(self, tool_name):
         """Propagate tool selection to all pages."""
@@ -177,24 +187,18 @@ class PDFView(Gtk.ScrolledWindow):
                  page.editor_popover.popdown()
 
     def set_text_mode(self, enabled):
-        child = self.page_box.get_first_child()
-        while child:
-            if isinstance(child, PDFPageView):
-                child.set_text_mode(enabled)
-            child = child.get_next_sibling()
+        for page_view in self._iter_all_page_views():
+            page_view.set_text_mode(enabled)
             
         if enabled:
             self.page_box.grab_focus()
 
     def reload_page(self, page_index: int):
         """Reloads widgets for a specific page after undo."""
-        child = self.page_box.get_first_child()
-        while child:
-            if isinstance(child, PDFPageView) and child.page_number == page_index:
-                # child.load_widgets() # REMOVED: Legacy
-                child.drawing_area.queue_draw()
+        for page_view in self._iter_all_page_views():
+            if page_view.page_number == page_index:
+                page_view.drawing_area.queue_draw()
                 break
-            child = child.get_next_sibling()
 
     def show_error(self, message):
         label = Gtk.Label(label=f"Error: {message}")
@@ -214,8 +218,7 @@ class PDFView(Gtk.ScrolledWindow):
 
     def on_zoom_scale_changed(self, gesture, scale):
         """Handle pinch-to-zoom gesture - continuous, proportional."""
-        new_scale = self._gesture_start_scale * scale
-        new_scale = max(self.min_scale, min(self.max_scale, new_scale))
+        new_scale = self._clamp_scale(self._gesture_start_scale * scale)
         
         if abs(new_scale - self.scale) < 0.001:
             return
@@ -225,28 +228,6 @@ class PDFView(Gtk.ScrolledWindow):
     def on_zoom_end(self, gesture, sequence):
         """Pinch gesture ended."""
         self._gesture_start_scale = self.scale
-
-    def on_scroll(self, controller, dx, dy):
-        """Handle Ctrl+Scroll for zoom."""
-        state = controller.get_current_event_state()
-        if state & Gdk.ModifierType.CONTROL_MASK:
-            # Get cursor position as focal point
-            event = controller.get_current_event()
-            if event:
-                x, y = event.get_position()
-                focal = (x, y)
-            else:
-                # Fallback to viewport center
-                focal = (self.get_allocated_width() / 2, self.get_allocated_height() / 2)
-            
-            # Proportional zoom (10% per scroll tick)
-            factor = 1.1 if dy < 0 else 1 / 1.1
-            new_scale = self.scale * factor
-            new_scale = max(self.min_scale, min(self.max_scale, new_scale))
-            
-            self._zoom_around_focal(new_scale, focal)
-            return True  # Event handled
-        return False  # Let scrolling happen normally
 
     def _zoom_around_focal(self, new_scale, focal):
         """Zoom around a focal point, adjusting scroll to keep it fixed."""
@@ -285,18 +266,8 @@ class PDFView(Gtk.ScrolledWindow):
 
     def _apply_zoom(self):
         """Apply current scale to all page views, traversing rows if needed."""
-        child = self.page_box.get_first_child()
-        while child:
-            if isinstance(child, PDFPageView):
-                child.update_scale(self.scale)
-            elif isinstance(child, Gtk.Box):
-                # This affects Layout Rows in Dual Mode
-                row_child = child.get_first_child()
-                while row_child:
-                    if isinstance(row_child, PDFPageView):
-                        row_child.update_scale(self.scale)
-                    row_child = row_child.get_next_sibling()
-            child = child.get_next_sibling()
+        for page_view in self._iter_all_page_views():
+            page_view.update_scale(self.scale)
             
         self.emit('zoom-changed', self.scale)
 
@@ -347,11 +318,7 @@ class PDFView(Gtk.ScrolledWindow):
         
         # If dual mode, scroll to row (parent Box), not page directly
         target_widget = parent if self.is_dual_mode and isinstance(parent, Gtk.Box) and parent != self.page_box else target_page
-        
-        # We need the y-coordinate relative to the page_box (scrolled content)
-        # origin_y = target_widget.get_allocation().y 
-        # Better: Translate coordinates to be sure
-        
+       
         try:
              # Translate (0,0) of target_widget to page_box
              _, y = target_widget.translate_coordinates(self.page_box, 0, 0)
@@ -372,15 +339,11 @@ class PDFView(Gtk.ScrolledWindow):
 
     def zoom_in(self):
         """Zoom in by 10%, centered on viewport."""
-        focal = (self.get_allocated_width() / 2, self.get_allocated_height() / 2)
-        new_scale = min(self.max_scale, self.scale * 1.1)
-        self._zoom_around_focal(new_scale, focal)
+        self._zoom_around_focal(self._clamp_scale(self.scale * 1.1), self._get_viewport_center_focal())
 
     def zoom_out(self):
         """Zoom out by 10%, centered on viewport."""
-        focal = (self.get_allocated_width() / 2, self.get_allocated_height() / 2)
-        new_scale = max(self.min_scale, self.scale / 1.1)
-        self._zoom_around_focal(new_scale, focal)
+        self._zoom_around_focal(self._clamp_scale(self.scale / 1.1), self._get_viewport_center_focal())
 
     def zoom_reset(self):
         """Reset to fit-to-width."""
@@ -399,27 +362,14 @@ class PDFView(Gtk.ScrolledWindow):
         first_page = self.document.get_page(0)
         page_width, page_height = first_page.get_size()
         
-        # Target Content Width = 2*page_width + spacing + margins
-        # Target Content Height = page_height + margins
-        
+        # Target Content = 2*page_width + spacing + margins
         target_w = (2 * page_width) + 20 
         target_h = page_height + 20
         
         scale_x = (viewport_width - 40) / target_w
         scale_y = (viewport_height - 40) / target_h
         
-        fit_scale = min(scale_x, scale_y)
-        fit_scale = max(self.min_scale, min(self.max_scale, fit_scale))
-        
-        # Capture current page index BEFORE applying zoom/layout changes
-        # This prevents scroll events during resize from updating it to the wrong value (e.g. last page)
-        target_index = self.current_page_index
-        
-        self.scale = fit_scale
-        self._apply_zoom()
-        
-        # Restore focus to current page (async to allow layout update)
-        GLib.idle_add(self.scroll_to_page, target_index)
+        self._set_scale_and_scroll(self._clamp_scale(min(scale_x, scale_y)))
         
         return False
 
@@ -468,12 +418,11 @@ class PDFView(Gtk.ScrolledWindow):
         if self.is_dual_mode:
             # Group items: (0,1), (2,3), ...
             for i in range(0, len(self.pages), 2):
-                row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=20) # Increased spacing
+                row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=20) 
                 row.set_halign(Gtk.Align.CENTER)
                 
-                row.set_visible(True) # Always visible
+                row.set_visible(True) 
                 
-                # Add pages to row
                 p1 = self.pages[i]
                 row.append(p1)
                 
@@ -496,7 +445,6 @@ class PDFView(Gtk.ScrolledWindow):
         is_ctrl = state & Gdk.ModifierType.CONTROL_MASK
         
         if self.is_continuous:
-            # Manual scroll handling for continuous mode to ensure it works
             step = 50 # Pixels for arrow keys
             page_step = self.get_allocated_height() * 0.9 # Screen height for PageUp/Down
             
@@ -541,7 +489,6 @@ class PDFView(Gtk.ScrolledWindow):
         new_index = self.current_page_index + delta
         new_index = max(0, min(len(self.pages) - 1, new_index))
         
-        # Always scroll, even if index is same (to snap back if user manual scrolled)
         self.scroll_to_page(new_index)
 
         return False
@@ -558,24 +505,19 @@ class PDFView(Gtk.ScrolledWindow):
                 x, y = event.get_position()
                 focal = (x, y)
             else:
-                focal = (self.get_allocated_width() / 2, self.get_allocated_height() / 2)
+                focal = self._get_viewport_center_focal()
             
-            # Proportional zoom (10% per scroll tick)
-            factor = 1.1 if dy < 0 else 1 / 1.1
-            new_scale = self.scale * factor
-            new_scale = max(self.min_scale, min(self.max_scale, new_scale))
-            
+            new_scale = self._clamp_scale(self.scale * (1.1 if dy < 0 else 1 / 1.1))
             self._zoom_around_focal(new_scale, focal)
-            return True  # Event handled
+            return True  
 
         # 2. Paged Mode Logic (Non-Continuous)
         if not self.is_continuous:
-            # Enforce page-by-page snapping for mouse wheel / trackpad scroll
             if dy > 0:
                 self.navigate_page(1)
             elif dy < 0:
                 self.navigate_page(-1)
-            return True # Consume event to prevent smooth scrolling
+            return True 
 
         return False
 

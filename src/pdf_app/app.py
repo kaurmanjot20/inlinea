@@ -10,9 +10,6 @@ class PDFApplication(Adw.Application):
         super().__init__(application_id=application_id, flags=flags)
         
     def do_activate(self):
-        """Called when the application is activated (e.g., launched)."""
-        
-        # Load CSS (Safe to do here)
         self.load_css()
         
         win = self.props.active_window

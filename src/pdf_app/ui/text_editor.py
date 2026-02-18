@@ -47,7 +47,7 @@ class TextEditorPopover(Gtk.Popover):
         rect.x = int(x * scale)
         rect.y = int(y * scale)
         rect.width = int(w * scale)
-        # Ensure minimum height/width so popover point is visible
+    
         if rect.width < 10: rect.width = 10
         if rect.height < 10: rect.height = 10
             
