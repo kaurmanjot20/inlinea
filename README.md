@@ -2,7 +2,7 @@
 
 A Linux-first, annotation-focused PDF editor built with Python, GTK 4, and Libadwaita.
 
-**UX-first. Native. Clean. No sidecar clutter.**
+**UX-first. Native. Clean.**
 
 ## Features
 
@@ -69,36 +69,6 @@ bash install-desktop.sh
 
 This copies a `.desktop` entry to `~/.local/share/applications/` so you can right-click any PDF and open it with Inlinea.
 
-## Project Structure
-
-```
-main.py                    # Entry point
-install-desktop.sh         # Desktop entry installer
-com.inlinea.app.desktop    # Freedesktop .desktop file
-src/
-  assets/
-    style.css              # Application stylesheet
-  pdf_app/
-    app.py                 # GTK Application class
-    main.py                # Module entry point
-    window.py              # Main window, tabs & ribbon
-    ui/
-      pdf_view.py          # Virtual-scroll PDF viewer
-      page_view.py         # Per-page overlay (gestures, annotations)
-      pdf_drawing_area.py  # Cairo rendering & annotation drawing
-      thumbnail_sidebar.py # Lazy thumbnail grid
-      empty_view.py        # Welcome screen
-      text_editor.py       # Inline text editor popover
-      text_dialog.py       # Text annotation dialog
-    document/
-      loading.py           # Poppler document loader
-      render.py            # Page-to-surface renderer
-      store.py             # Annotation data model & undo/redo
-      pdf_storage.py       # PyMuPDF annotation I/O
-      export.py            # Flattened PDF export
-    utils/
-      geometry.py          # Geometry helpers
-```
 
 ## License
 
