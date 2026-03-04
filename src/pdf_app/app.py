@@ -6,7 +6,7 @@ from gi.repository import Gtk, Adw, Gio, Gdk
 from pdf_app.window import MainWindow
 
 class PDFApplication(Adw.Application):
-    def __init__(self, application_id='com.inlinea.app', flags=Gio.ApplicationFlags.FLAGS_NONE):
+    def __init__(self, application_id='com.inlinea.app', flags=Gio.ApplicationFlags.HANDLES_OPEN):
         super().__init__(application_id=application_id, flags=flags)
         
     def do_activate(self):
@@ -17,12 +17,18 @@ class PDFApplication(Adw.Application):
             win = MainWindow(application=self)
             
         win.present()
+
+    def do_open(self, files, n_files, hint):
+        self.do_activate()
+        win = self.props.active_window
+        if win:
+            for gfile in files:
+                win.open_pdf_tab(gfile)
         
     def load_css(self):
         provider = Gtk.CssProvider()
         try:
             import os
-            # Try multiple paths
             paths = [
                 os.path.join(os.path.dirname(__file__), "../assets/style.css"),
                 "src/assets/style.css",
@@ -42,6 +48,7 @@ class PDFApplication(Adw.Application):
                     display, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
                 )
             else:
-                pass  # CSS file not found
+                pass
         except Exception as e:
-            pass  # CSS loading error
+            pass
+

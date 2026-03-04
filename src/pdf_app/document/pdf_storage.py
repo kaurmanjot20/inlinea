@@ -1,13 +1,10 @@
 
 import fitz  # PyMuPDF
-import tempfile
-import os
-from typing import List, Tuple, Optional
+from typing import List, Tuple
 from pdf_app.document.store import Annotation
 
 APP_CREATOR = "Inlinea"
 
-# PyMuPDF annotation type constants
 _SUPPORTED_TYPES = {
     fitz.PDF_ANNOT_HIGHLIGHT: "highlight",
     fitz.PDF_ANNOT_UNDERLINE: "underline",
@@ -19,28 +16,9 @@ _TYPE_TO_FITZ = {v: k for k, v in _SUPPORTED_TYPES.items()}
 
 
 def _is_supported(annot) -> bool:
-    """Check if annotation type is supported by Inlinea."""
     return annot.type[0] in _SUPPORTED_TYPES
 
 
-def create_render_copy(source_path: str) -> str:
-    doc = fitz.open(source_path)
-
-    for page_index in range(len(doc)):
-        page = doc[page_index]
-        annots_to_delete = []
-        for annot in page.annots():
-            if _is_supported(annot):
-                annots_to_delete.append(annot)
-        for annot in annots_to_delete:
-            page.delete_annot(annot)
-
-    fd, temp_path = tempfile.mkstemp(suffix=".pdf")
-    os.close(fd)
-    doc.save(temp_path, garbage=4, deflate=True)
-    doc.close()
-
-    return temp_path
 
 
 def _color_from_annot(annot, annot_type: str) -> Tuple[float, float, float, float]:

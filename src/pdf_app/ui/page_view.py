@@ -169,13 +169,9 @@ class PDFPageView(Gtk.Overlay):
         hit_ann = self.store.find_annotation_at(self.page_number, x/self.scale, y/self.scale)
         
         if hit_ann:
-            is_already_selected = (self.drawing_area.selected_annotation == hit_ann)
-
             self.drawing_area.selected_annotation = hit_ann
             self.drawing_area.selected_region = None
             self.drawing_area.queue_draw()
-            
-            pass
         else:
             if self.drawing_area.selected_annotation and not self.drawing_area.is_point_on_handle(x, y):
                  self.drawing_area.selected_annotation = None
@@ -188,10 +184,6 @@ class PDFPageView(Gtk.Overlay):
         self.drawing_area.handle_drag_end(offset_x, offset_y)
 
     def on_click_pressed(self, gesture, n_press, x, y):
-        picked = self.pick(x, y, Gtk.PickFlags.DEFAULT)
-        if picked == self.drawing_area:
-             self.drawing_area.grab_focus()
-        
         self.handle_click_logic(x, y)
         
         if n_press == 2:
@@ -201,10 +193,6 @@ class PDFPageView(Gtk.Overlay):
                       self.open_text_editor(ann)
                  elif ann.type in ('highlight', 'underline', 'square'):
                       self._open_color_dialog()
-
-    def on_click_released(self, gesture, n_press, x, y):
-        if self.text_mode:
-            self.create_text_annotation_at_point(x, y)
 
     def create_text_annotation_at_point(self, x, y):
         pdf_x = x / self.scale

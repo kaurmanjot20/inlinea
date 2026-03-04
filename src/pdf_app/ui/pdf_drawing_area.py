@@ -15,8 +15,8 @@ class PDFDrawingArea(Gtk.DrawingArea):
         self.store = store
         self.surface = None
         
-        self.set_focusable(True) # Allow focus to be grabbed
-        self.set_can_target(True) # Allow events (focus)
+        self.set_focusable(True) 
+        self.set_can_target(True) 
         self.set_draw_func(self.on_draw)
         
         # Selection State
@@ -29,8 +29,8 @@ class PDFDrawingArea(Gtk.DrawingArea):
         
         # Handle Resize State
         self._resizing_handle = None # 'start', 'end', 'move', 'nw', 'ne', 'sw', 'se'
-        self._resize_start_pos = None  # Initial drag position
-        self.handle_radius = 12  # Larger radius for easier clicking
+        self._resize_start_pos = None  
+        self.handle_radius = 12  
         self._old_rects = None  # Store original rects for undo
         
         self.queue_draw()
@@ -123,7 +123,6 @@ class PDFDrawingArea(Gtk.DrawingArea):
         start_handle, end_handle = self.get_handle_positions()
         threshold = self.handle_radius * 2
 
-        # Check interaction with HANDLES
         if start_handle:
             dist_start = ((start_x - start_handle[0])**2 + (start_y - start_handle[1])**2)**0.5
             dist_end = ((start_x - end_handle[0])**2 + (start_y - end_handle[1])**2)**0.5
@@ -150,7 +149,6 @@ class PDFDrawingArea(Gtk.DrawingArea):
                 self.set_cursor(cursor)
                 return True
             
-            # Check interaction with SQUARE HANDLES (4 corners)
             if ann.type == 'square':
                  # Recheck all 4 corners
                  r = ann.rects[0]
@@ -208,26 +206,24 @@ class PDFDrawingArea(Gtk.DrawingArea):
         start_x, start_y = self._resize_start_pos
         cur_x = start_x + offset_x
         cur_y = start_y + offset_y
-        
+
         # Convert to PDF coords
         pdf_x = cur_x / self.scale
         pdf_y = cur_y / self.scale
-        
+
         # HANDLE MOVE
         if self._resizing_handle == 'move':
-            # Threshold check
             drag_dist = (offset_x**2 + offset_y**2)**0.5
-            if drag_dist < 5.0: 
+            if drag_dist < 5.0:
                  return
 
-            # Calculate delta in pdf coords
             dx = offset_x / self.scale
             dy = offset_y / self.scale
-            
+
             new_rects = []
             for r in self._old_rects:
                 new_rects.append((r[0] + dx, r[1] + dy, r[2], r[3]))
-            
+
             self.selected_annotation.rects = new_rects
             self.queue_draw()
             return
@@ -235,23 +231,17 @@ class PDFDrawingArea(Gtk.DrawingArea):
         # HANDLE SQUARE RESIZE
         if self.selected_annotation.type == 'square':
              anchor_x, anchor_y = self._anchor_pdf
-             
-             # Calculate new rect defined by anchor and current pdf point
-             # Normalize
              new_x = min(anchor_x, pdf_x)
              new_y = min(anchor_y, pdf_y)
              new_w = abs(anchor_x - pdf_x)
              new_h = abs(anchor_y - pdf_y)
-             
              self.selected_annotation.rects = [(new_x, new_y, new_w, new_h)]
              self.queue_draw()
              return
 
         anchor_x, anchor_y = self._anchor_pdf
-        
+
         # Create selection rectangle from anchor to cursor
-        import gi
-        gi.require_version('Poppler', '0.18')
         from gi.repository import Poppler
         
         rect = Poppler.Rectangle()
@@ -297,7 +287,7 @@ class PDFDrawingArea(Gtk.DrawingArea):
         self.set_cursor(None)
 
     def on_draw(self, area, c, width, height):
-        # 1. Render Surface (PDF + Background)
+        #  Render Surface (PDF + Background)
         if self.surface is None:
             self.surface = render_page_to_surface(self.page, self.scale)
         
@@ -308,11 +298,10 @@ class PDFDrawingArea(Gtk.DrawingArea):
         if self.store:
             try:
                 page_idx = self.page.get_index()
-            except:
-                page_idx = 0 # Fallback
-                
+            except Exception:
+                page_idx = 0
+
             annotations = self.store.get_for_page(page_idx)
-            
 
 
             highlight_anns = [a for a in annotations if a.type in ('highlight', 'square')]
@@ -358,7 +347,7 @@ class PDFDrawingArea(Gtk.DrawingArea):
     
             c.restore()
 
-        # 3. Draw Selection Overlay (Text Selection)
+        #  Draw Selection Overlay (Text Selection)
         if self.selected_region:
             c.set_source_rgba(0.0, 0.4, 0.8, 0.4) # Blue, semi-transparent
             
@@ -372,11 +361,11 @@ class PDFDrawingArea(Gtk.DrawingArea):
                 
             c.fill()
 
-        # 4. Draw Annotation Selection (Active)
+        #  Draw Annotation Selection (Active)
         if self.selected_annotation:
             self.draw_annotation_selection(c, self.selected_annotation)
             
-        # 5. Draw Temp Rect (Area Creation)
+        #  Draw Temp Rect (Area Creation)
         if self.temp_rect:
             x, y, w, h = self.temp_rect
             c.set_source_rgba(1.0, 1.0, 0.0, 0.4) # Yellow guide
@@ -389,13 +378,10 @@ class PDFDrawingArea(Gtk.DrawingArea):
             
         x, y, w, h = ann.rects[0]
         
-        # Create Layout
         layout = PangoCairo.create_layout(c)
         layout.set_text(ann.content, -1)
         
-        # Font Style (Naive parsing for now)
         font_desc = Pango.FontDescription("Sans 12")
-        # Scale handling: font size 12 matches 12 points in PDF if scale is handled by cairo
         layout.set_font_description(font_desc)
         
         # Position
@@ -507,7 +493,7 @@ class PDFDrawingArea(Gtk.DrawingArea):
         y2 = (last_rect[1] + last_rect[3]) * self.scale
         h2 = last_rect[3] * self.scale
         
-        handle_radius = 10  # Larger for easier clicking
+        handle_radius = 10  
         
         # Start Handle
         c.set_line_width(3)
@@ -538,7 +524,7 @@ class PDFDrawingArea(Gtk.DrawingArea):
         c.arc(x2, y2 + handle_radius, handle_radius, 0, 6.28)
         c.fill()
 
-        # Also outline the rects slightly?
+        
         c.set_source_rgba(0.2, 0.6, 1.0, 0.3) # Faint blue
         for r in ann.rects:
              c.rectangle(r[0]*self.scale, r[1]*self.scale, r[2]*self.scale, r[3]*self.scale)

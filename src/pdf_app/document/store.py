@@ -6,13 +6,13 @@ from typing import List, Optional, Tuple
 @dataclass
 class Annotation:
     id: str
-    type: str  # 'highlight', 'underline', 'text'
+    type: str  
     page_index: int
-    rects: List[Tuple[float, float, float, float]]  # List of [x, y, w, h] in PDF points
-    color: Tuple[float, float, float, float] = (1.0, 1.0, 0.0, 0.4)  # RGBA
+    rects: List[Tuple[float, float, float, float]]  
+    color: Tuple[float, float, float, float] = (1.0, 1.0, 0.0, 0.4)  
     content: str = ""
-    style: str = "standard"  # for text annotations
-    created_at: str = ""  # ISO timestamp
+    style: str = "standard"
+    created_at: str = ""
 
     @classmethod
     def create(cls, type: str, page_index: int, rects: List[Tuple[float, float, float, float]],
@@ -56,7 +56,8 @@ class AnnotationStore:
     def is_dirty(self, value: bool):
         self._is_dirty = value
         if self.on_dirty_changed:
-            self.on_dirty_changed(value)
+            from gi.repository import GLib
+            GLib.idle_add(self.on_dirty_changed, value)
 
     # ========== PDF I/O ==========
 

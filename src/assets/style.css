@@ -1,6 +1,29 @@
-
 .pdf-canvas {
     background-color: transparent;
+}
+
+/* Page placeholder with subtle shimmer animation */
+.page-placeholder {
+    background: linear-gradient(110deg,
+            #f0f0f0 0%,
+            #f0f0f0 40%,
+            #fafafa 50%,
+            #f0f0f0 60%,
+            #f0f0f0 100%);
+    background-size: 200% 100%;
+    animation: shimmer 1.8s ease-in-out infinite;
+    border-radius: 2px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+@keyframes shimmer {
+    0% {
+        background-position: 200% 0;
+    }
+
+    100% {
+        background-position: -200% 0;
+    }
 }
 
 .pdf-highlight {
@@ -25,9 +48,8 @@
     box-shadow: none;
 }
 
-
 .toolbar {
-    border-bottom: 1px solid #1a1a1a;
+    border-bottom: 1px solid alpha(currentColor, 0.15);
     padding: 6px;
 }
 

@@ -8,6 +8,14 @@ def render_page_to_surface(page: Poppler.Page, scale: float = 1.0) -> cairo.Imag
     scaled_width = int(width * scale)
     scaled_height = int(height * scale)
     
+    # Cap resolution to prevent excessive memory usage on large zoom
+    MAX_DIM = 2400
+    if scaled_width > MAX_DIM:
+        cap_scale = MAX_DIM / width
+        scaled_width = MAX_DIM
+        scaled_height = int(height * cap_scale)
+        scale = cap_scale
+    
     surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, scaled_width, scaled_height)
     context = cairo.Context(surface)
     
@@ -16,7 +24,7 @@ def render_page_to_surface(page: Poppler.Page, scale: float = 1.0) -> cairo.Imag
     
     context.scale(scale, scale)
     
-    page.render(context)
+    page.render_for_printing_with_options(context, Poppler.PrintFlags.DOCUMENT)
     
     return surface
 

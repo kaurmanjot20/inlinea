@@ -8,7 +8,7 @@ class TextEditorPopover(Gtk.Popover):
         self.set_parent(parent_widget)
         self.annotation = annotation
         self.on_update = on_update
-        self.parent_widget = parent_widget # Usually DrawingArea
+        self.parent_widget = parent_widget 
         
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         box.set_margin_top(4)
@@ -22,7 +22,6 @@ class TextEditorPopover(Gtk.Popover):
         self.text_view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
         self.text_view.get_buffer().set_text(annotation.content)
         self.text_view.get_buffer().connect("changed", self.on_text_changed)
-        # Font styling for editor can match drawing area later
         
         scroll = Gtk.ScrolledWindow()
         scroll.set_child(self.text_view)
