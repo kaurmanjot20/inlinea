@@ -53,7 +53,7 @@ sudo apt install \
   python3-pymupdf
 ```
 
-## Running
+## Running Locally
 
 ```bash
 python3 main.py
