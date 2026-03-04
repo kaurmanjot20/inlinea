@@ -172,10 +172,12 @@ class PDFPageView(Gtk.Overlay):
             self.drawing_area.selected_annotation = hit_ann
             self.drawing_area.selected_region = None
             self.drawing_area.queue_draw()
+            self.drawing_area.grab_focus()
         else:
             if self.drawing_area.selected_annotation and not self.drawing_area.is_point_on_handle(x, y):
                  self.drawing_area.selected_annotation = None
                  self.drawing_area.queue_draw()
+            self.drawing_area.grab_focus()
 
     def on_resize_drag_update(self, gesture, offset_x, offset_y):
         self.drawing_area.handle_drag_update(offset_x, offset_y)
@@ -233,6 +235,7 @@ class PDFPageView(Gtk.Overlay):
              self.drawing_area.temp_rect = (start_x, start_y, 0, 0)
              
         self.drawing_area.queue_draw()
+        self.drawing_area.grab_focus()
 
     def on_drag_update(self, gesture, offset_x, offset_y):
         if not self.drawing_area.selection_start:

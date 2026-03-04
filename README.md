@@ -19,7 +19,8 @@ A Linux-first, annotation-focused PDF editor built with Python, GTK 4, and Libad
 
 ## Screenshots
 
-<!-- Add screenshots here -->
+![Starting Page](screenshot0.png)
+![Annotations Example](screenshot1.png)
 
 ## Setup & Installation
 
