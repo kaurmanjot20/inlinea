@@ -1,4 +1,4 @@
-# Inlinea
+# <img src="inlinea.png" width="32" height="32" align="center"> Inlinea
 
 A Linux-first, annotation-focused PDF editor built with Python, GTK 4, and Libadwaita.
 
