@@ -20,7 +20,7 @@ A Linux-first, annotation-focused PDF editor built with Python, GTK 4, and Libad
 ## Screenshots
 
 <p align="center">
-  <img src="https://github.com/kaurmanjot20/linux-pdf-editor/raw/main/inlineaVID.mp4" alt="Inlinea Demo" width="100%" />
+  <video src="https://github.com/user-attachments/assets/8f8b68d0-2bc8-4441-a6fe-124aa5c16680" autoplay loop muted controls width="100%"></video>
 </p>
 
 <p align="center">
