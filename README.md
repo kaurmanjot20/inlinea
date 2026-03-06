@@ -30,7 +30,8 @@ Built with Python, GTK 4, and Libadwaita, Inlinea is designed for users who need
 ## 📸 Preview
 
 <p align="center">
-  <video src="https://github.com/user-attachments/assets/890525e6-ad5c-4782-b35a-4206ee0bda65" controls width="100%"></video>
+  <img src="src/assets/images/screenshot0.png" width="49%" /> 
+  <img src="src/assets/images/screenshot1.png" width="49%" />
 </p>
 
 ---
