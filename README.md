@@ -20,7 +20,9 @@ A Linux-first, annotation-focused PDF editor built with Python, GTK 4, and Libad
 ## Screenshots
 
 <p align="center">
-  <video src="src/assets/images/inlineaVID.mp4" autoplay loop muted controls width="100%"></video>
+  <video controls width="100%">
+    <source src="src/assets/images/inlineaVID.mp4" type="video/mp4">
+  </video>
 </p>
 
 <p align="center">
