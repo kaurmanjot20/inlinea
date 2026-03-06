@@ -825,3 +825,15 @@ class PDFView(Gtk.ScrolledWindow):
             return True
 
         return False
+
+    def clear_all_selections(self, except_page_index=None):
+        for container in self._active_containers.values():
+            if except_page_index is not None and container.page_number == except_page_index:
+                continue
+            if container.page_view:
+                container.page_view.drawing_area.selected_region = None
+                container.page_view.drawing_area.selected_annotation = None
+                container.page_view.drawing_area.queue_draw()
+                # Also popdown common popover
+                if hasattr(container.page_view, 'popover'):
+                    container.page_view.popover.popdown()

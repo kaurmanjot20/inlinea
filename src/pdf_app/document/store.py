@@ -44,6 +44,11 @@ class AnnotationStore:
         self._is_dirty: bool = False
         self.on_dirty_changed = None  # Callback function(is_dirty: bool)
 
+        # Shared Default Colors for new annotations
+        self.default_highlight_color = (1.0, 1.0, 0.0) # Yellow
+        self.default_underline_color = (1.0, 0.0, 0.0) # Red
+        self.default_area_color = (1.0, 1.0, 0.0)      # Yellow
+
         # Undo/Redo stacks store tuples: (operation, annotation)
         self._undo_stack: List[tuple] = []
         self._redo_stack: List[tuple] = []
@@ -106,6 +111,11 @@ class AnnotationStore:
         self._redo_stack.clear()
         self.is_dirty = True
 
+    def record_color_change(self, annotation_id: str, old_color: tuple):
+        self._undo_stack.append(('color', annotation_id, old_color))
+        self._redo_stack.clear()
+        self.is_dirty = True
+
     # ========== UNDO / REDO ==========
 
     def undo(self) -> Optional[tuple]:
@@ -136,6 +146,15 @@ class AnnotationStore:
                     self._redo_stack.append(('modify', annotation_id, current_rects))
                     self.is_dirty = True
                     return (op, ann)
+        elif op == 'color':
+            annotation_id, old_color = entry[1], entry[2]
+            for ann in self.annotations:
+                if ann.id == annotation_id:
+                    current_color = ann.color
+                    ann.color = old_color
+                    self._redo_stack.append(('color', annotation_id, current_color))
+                    self.is_dirty = True
+                    return (op, ann)
         return None
 
     def redo(self) -> Optional[tuple]:
@@ -164,6 +183,15 @@ class AnnotationStore:
                     current_rects = list(ann.rects) if ann.rects else []
                     ann.rects = new_rects
                     self._undo_stack.append(('modify', annotation_id, current_rects))
+                    self.is_dirty = True
+                    return (op, ann)
+        elif op == 'color':
+            annotation_id, new_color = entry[1], entry[2]
+            for ann in self.annotations:
+                if ann.id == annotation_id:
+                    current_color = ann.color
+                    ann.color = new_color
+                    self._undo_stack.append(('color', annotation_id, current_color))
                     self.is_dirty = True
                     return (op, ann)
         return None

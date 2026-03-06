@@ -50,9 +50,6 @@ class PDFPageView(Gtk.Overlay):
         self.color_popover = None
         self.editor_popover = None
         
-        self.default_highlight_color = (1.0, 1.0, 0.0) # Yellow
-        self.default_underline_color = (1.0, 0.0, 0.0) # Red
-        self.default_area_color = (1.0, 1.0, 0.0) # Yellow (Area)
         key_controller = Gtk.EventControllerKey()
         key_controller.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
         key_controller.connect("key-pressed", self.on_key_pressed)
@@ -186,6 +183,11 @@ class PDFPageView(Gtk.Overlay):
         self.drawing_area.handle_drag_end(offset_x, offset_y)
 
     def on_click_pressed(self, gesture, n_press, x, y):
+        # Clear selections on other pages
+        pv = self._get_pdf_view()
+        if pv:
+            pv.clear_all_selections(except_page_index=self.page_number)
+
         self.handle_click_logic(x, y)
         
         if n_press == 2:
@@ -225,6 +227,11 @@ class PDFPageView(Gtk.Overlay):
         if self.drawing_area._resizing_handle:
             gesture.set_state(Gtk.EventSequenceState.DENIED)
             return
+
+        # Clear selections on other pages
+        pv = self._get_pdf_view()
+        if pv:
+            pv.clear_all_selections(except_page_index=self.page_number)
 
         self.drawing_area.selection_start = (start_x, start_y)
         self.drawing_area.selection_end = (start_x, start_y)
@@ -291,7 +298,7 @@ class PDFPageView(Gtk.Overlay):
         
         rects = [(pdf_x, pdf_y, pdf_w, pdf_h)]
         
-        color = self.default_area_color + (0.4,)
+        color = self.store.default_area_color + (0.4,)
         
         ann = Annotation.create(type='square', page_index=self.page_number, rects=rects, color=color)
         self.store.add(ann)
@@ -393,15 +400,19 @@ class PDFPageView(Gtk.Overlay):
         if not ann:
             return
 
-        _, _, _, a = ann.color
-        ann.color = (rgba.red, rgba.green, rgba.blue, a)
+        new_color = (rgba.red, rgba.green, rgba.blue, ann.color[3])
+        if ann.color == new_color:
+            return
+
+        self.store.record_color_change(ann.id, ann.color)
+        ann.color = new_color
 
         if ann.type == 'highlight':
-            self.default_highlight_color = (rgba.red, rgba.green, rgba.blue)
+            self.store.default_highlight_color = (rgba.red, rgba.green, rgba.blue)
         elif ann.type == 'underline':
-            self.default_underline_color = (rgba.red, rgba.green, rgba.blue)
+            self.store.default_underline_color = (rgba.red, rgba.green, rgba.blue)
         elif ann.type == 'square':
-            self.default_area_color = (rgba.red, rgba.green, rgba.blue)
+            self.store.default_area_color = (rgba.red, rgba.green, rgba.blue)
 
         self.store.is_dirty = True
         self.drawing_area.queue_draw()
@@ -502,9 +513,9 @@ class PDFPageView(Gtk.Overlay):
             
         # Use sticky defaults
         if type == 'highlight':
-            color = self.default_highlight_color + (0.4,) 
+            color = self.store.default_highlight_color + (0.4,) 
         elif type == 'underline':
-            color = self.default_underline_color + (1.0,) 
+            color = self.store.default_underline_color + (1.0,) 
         else:
             color = (1, 0, 0, 1) 
 
@@ -513,3 +524,12 @@ class PDFPageView(Gtk.Overlay):
         
         self.drawing_area.selected_region = None
         self.drawing_area.queue_draw()
+
+    def _get_pdf_view(self):
+        p = self.get_parent()
+        while p:
+            from pdf_app.ui.pdf_view import PDFView
+            if isinstance(p, PDFView):
+                return p
+            p = p.get_parent()
+        return None

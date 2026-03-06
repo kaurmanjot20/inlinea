@@ -143,6 +143,7 @@ class PDFDrawingArea(Gtk.DrawingArea):
                 self._resize_start_pos = (start_x, start_y)
                 self._old_rects = list(self.selected_annotation.rects) if self.selected_annotation.rects else []
                 if self.selected_annotation.rects:
+                    # Anchor is the top-left of the FIRST rectangle
                     first_r = self.selected_annotation.rects[0]
                     self._anchor_pdf = (first_r[0], first_r[1])
                 cursor = Gdk.Cursor.new_from_name("e-resize", None)
@@ -276,8 +277,9 @@ class PDFDrawingArea(Gtk.DrawingArea):
 
     def handle_drag_end(self, offset_x, offset_y):
         if self._resizing_handle and self.selected_annotation and self._old_rects:
-            # Record the modification for undo (stores old rects)
-            self.store.record_modify(self.selected_annotation.id, self._old_rects)
+            # Only record if something actually changed
+            if self.selected_annotation.rects != self._old_rects:
+                self.store.record_modify(self.selected_annotation.id, self._old_rects)
             
         self._resizing_handle = None
         self._resize_start_pos = None
