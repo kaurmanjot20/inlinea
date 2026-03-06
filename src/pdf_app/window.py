@@ -652,6 +652,14 @@ class MainWindow(Adw.ApplicationWindow):
             current_tool = getattr(view, 'tool_mode', 'select')
             self.update_ribbon_tool_state(current_tool)
             
+            action_dual = self.lookup_action("view_dual")
+            if action_dual:
+                action_dual.set_state(GLib.Variant.new_boolean(getattr(view, 'is_dual_mode', False)))
+                
+            action_cont = self.lookup_action("view_continuous")
+            if action_cont:
+                action_cont.set_state(GLib.Variant.new_boolean(getattr(view, 'is_continuous', True)))
+            
             h1 = view.connect('page-changed', self.on_view_page_changed)
             h2 = view.connect('zoom-changed', self.on_view_zoom_changed)
             self.current_view_signals = (view, [h1, h2])
@@ -668,6 +676,14 @@ class MainWindow(Adw.ApplicationWindow):
             self.page_label.set_text("")
             self.zoom_label.set_text("")
             self.header_separator.set_visible(False)
+            
+            action_dual = self.lookup_action("view_dual")
+            if action_dual:
+                action_dual.set_state(GLib.Variant.new_boolean(False))
+                
+            action_cont = self.lookup_action("view_continuous")
+            if action_cont:
+                action_cont.set_state(GLib.Variant.new_boolean(True))
 
     def on_view_page_changed(self, view, page_index):
         active_page = self.tab_view.get_selected_page()
