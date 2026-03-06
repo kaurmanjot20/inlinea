@@ -1,4 +1,4 @@
-# <img src="inlinea.png" width="32" height="32" align="center"> Inlinea
+# <img src="src/assets/images/inlinea.png" width="32" height="32" align="center"> Inlinea
 
 A Linux-first, annotation-focused PDF editor built with Python, GTK 4, and Libadwaita.
 
@@ -20,12 +20,12 @@ A Linux-first, annotation-focused PDF editor built with Python, GTK 4, and Libad
 ## Screenshots
 
 <p align="center">
-  <video src="https://github.com/user-attachments/assets/8f8b68d0-2bc8-4441-a6fe-124aa5c16680" autoplay loop muted controls width="100%"></video>
+  <video src="src/assets/images/inlineaGIF.gif" autoplay loop muted controls width="100%"></video>
 </p>
 
 <p align="center">
-  <img src="screenshot1.png" width="49%" /> 
-  <img src="screenshot0.png" width="49%" />
+  <img src="src/assets/images/screenshot1.png" width="49%" /> 
+  <img src="src/assets/images/screenshot0.png" width="49%" />
 </p>
 
 ## Setup & Installation
@@ -62,7 +62,7 @@ sudo apt install \
 ## Running Locally
 
 ```bash
-python3 main.py
+inlinea
 ```
 
 ## Register as PDF Handler

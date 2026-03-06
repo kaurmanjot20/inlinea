@@ -10,4 +10,4 @@ authors = [{ name="Manjot Kaur", email="manjotkaur2074@gmail.com" }]
 requires-python = ">=3.9"
 
 [project.scripts]
-inlinea = "pdf_app.main:main"
+inlinea = "main:main"
