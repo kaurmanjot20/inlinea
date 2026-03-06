@@ -410,6 +410,16 @@ class MainWindow(Adw.ApplicationWindow):
         self.tab_view.set_selected_page(page)
 
     def open_pdf_tab(self, file):
+        new_file_path = file.get_path()
+        if new_file_path:
+            for i in range(self.tab_view.get_n_pages()):
+                page_wrapper = self.tab_view.get_nth_page(i)
+                view = page_wrapper.get_child()
+                if isinstance(view, PDFView) and hasattr(view, 'file') and view.file:
+                    if view.file.get_path() == new_file_path:
+                        self.tab_view.set_selected_page(page_wrapper)
+                        return
+
         pdf_view = PDFView(file)
         
         if self.active_tool_name:
