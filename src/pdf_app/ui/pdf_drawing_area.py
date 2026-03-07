@@ -133,7 +133,7 @@ class PDFDrawingArea(Gtk.DrawingArea):
                 self._old_rects = list(self.selected_annotation.rects) if self.selected_annotation.rects else []
                 if self.selected_annotation.rects:
                     last_r = self.selected_annotation.rects[-1]
-                    self._anchor_pdf = (last_r[0] + last_r[2], last_r[1] + last_r[3])
+                    self._anchor_pdf = (last_r[0] + last_r[2], last_r[1] + last_r[3]/2.0)
                 cursor = Gdk.Cursor.new_from_name("w-resize", None)
                 self.set_cursor(cursor)
                 return True
@@ -143,9 +143,9 @@ class PDFDrawingArea(Gtk.DrawingArea):
                 self._resize_start_pos = (start_x, start_y)
                 self._old_rects = list(self.selected_annotation.rects) if self.selected_annotation.rects else []
                 if self.selected_annotation.rects:
-                    # Anchor is the top-left of the FIRST rectangle
+                    # Anchor is the middle-left of the FIRST rectangle
                     first_r = self.selected_annotation.rects[0]
-                    self._anchor_pdf = (first_r[0], first_r[1])
+                    self._anchor_pdf = (first_r[0], first_r[1] + first_r[3]/2.0)
                 cursor = Gdk.Cursor.new_from_name("e-resize", None)
                 self.set_cursor(cursor)
                 return True
@@ -242,11 +242,26 @@ class PDFDrawingArea(Gtk.DrawingArea):
 
         anchor_x, anchor_y = self._anchor_pdf
 
-        # Create selection rectangle from anchor to cursor
+        if self._resizing_handle == 'end':
+            # End handle cannot move before the Start handle (anchor)
+            if pdf_y < anchor_y - 5.0: # Prevent jumping to previous lines
+                pdf_y = anchor_y
+                pdf_x = anchor_x
+            elif abs(pdf_y - anchor_y) <= 5.0 and pdf_x < anchor_x:
+                pdf_x = anchor_x
+                
+        elif self._resizing_handle == 'start':
+            # Start handle cannot move after the End handle (anchor)
+            if pdf_y > anchor_y + 5.0: # Prevent jumping to next lines
+                pdf_y = anchor_y
+                pdf_x = anchor_x
+            elif abs(pdf_y - anchor_y) <= 5.0 and pdf_x > anchor_x:
+                pdf_x = anchor_x
+
+        # Create geometric selection rectangle from anchor to clamped cursor
         from gi.repository import Poppler
         
         rect = Poppler.Rectangle()
-        # Always ensure x1 < x2 and y1 < y2
         rect.x1 = min(pdf_x, anchor_x)
         rect.y1 = min(pdf_y, anchor_y)
         rect.x2 = max(pdf_x, anchor_x)
