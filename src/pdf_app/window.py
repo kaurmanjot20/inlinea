@@ -25,6 +25,25 @@ class MainWindow(Adw.ApplicationWindow):
         self.header_bar = Adw.HeaderBar()
         self.toolbar_view.add_top_bar(self.header_bar)
         
+        self.file_box = self.build_filebox()
+        self.tool_box = self.build_toolbox()
+        
+        self.header_left_box = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL, spacing=10
+        )
+        self.header_left_box.append(self.file_box)
+        self.header_left_box.append(self.tool_box)
+        self.header_bar.pack_start(self.header_left_box)
+
+        self.view_box = self.build_viewbox()
+        self.zoom_box = self.build_zoombox()
+        self.header_right_box = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL, spacing=10
+        )
+        self.header_right_box.append(self.view_box)
+        self.header_right_box.append(self.zoom_box)
+        self.header_bar.pack_end(self.header_right_box)
+
 
         title_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
         
@@ -43,8 +62,6 @@ class MainWindow(Adw.ApplicationWindow):
         
         # 3. Ribbon (Top Bar)
         self.active_tool_name = None
-        self.ribbon_box = self.build_ribbon()
-        self.toolbar_view.add_top_bar(self.ribbon_box)
 
         self.tab_bar = Adw.TabBar()
         self.toolbar_view.add_top_bar(self.tab_bar)
@@ -205,40 +222,7 @@ class MainWindow(Adw.ApplicationWindow):
                 self.open_pdf_tab(file)
         dialog.destroy()
 
-    def build_ribbon(self):
-        ribbon_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        ribbon_box.add_css_class("toolbar")
-        ribbon_box.set_margin_start(10)
-        ribbon_box.set_margin_end(10)
-        ribbon_box.set_margin_top(5)
-        ribbon_box.set_margin_bottom(5)
-        
-        box_file = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
-        box_file.add_css_class("linked")
-        
-        btn_open = Gtk.Button(icon_name="document-open-symbolic")
-        btn_open.set_tooltip_text("Open PDF")
-        btn_open.set_action_name("win.open_document")
-        
-        btn_save = Gtk.Button(icon_name="document-save-symbolic")
-        btn_save.set_tooltip_text("Save (Ctrl+S)")
-        btn_save.set_action_name("win.save")
-        
-        btn_save_as = Gtk.Button(icon_name="document-save-as-symbolic")
-        btn_save_as.set_tooltip_text("Save As (Ctrl+Shift+S)")
-        btn_save_as.set_action_name("win.save_as")
-        
-        btn_export = Gtk.Button(icon_name="export-symbolic")
-        btn_export.set_tooltip_text("Export to PDF")
-        btn_export.set_action_name("win.export")
-        
-        box_file.append(btn_open)
-        box_file.append(btn_save)
-        box_file.append(btn_save_as)
-        box_file.append(btn_export)
-        
-        ribbon_box.append(box_file)
-        
+    def build_toolbox(self):
         box_tools = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         box_tools.add_css_class("linked")
         
@@ -278,12 +262,36 @@ class MainWindow(Adw.ApplicationWindow):
         box_tools.append(btn_text)
         box_tools.append(btn_area)
         
-        ribbon_box.append(box_tools)
+        return box_tools
+
+    def build_filebox(self):
+        box_file = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        box_file.add_css_class("linked")
         
-        spacer = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
-        spacer.set_hexpand(True)
-        ribbon_box.append(spacer)
+        btn_open = Gtk.Button(icon_name="document-open-symbolic")
+        btn_open.set_tooltip_text("Open PDF")
+        btn_open.set_action_name("win.open_document")
         
+        btn_save = Gtk.Button(icon_name="document-save-symbolic")
+        btn_save.set_tooltip_text("Save (Ctrl+S)")
+        btn_save.set_action_name("win.save")
+        
+        btn_save_as = Gtk.Button(icon_name="document-save-as-symbolic")
+        btn_save_as.set_tooltip_text("Save As (Ctrl+Shift+S)")
+        btn_save_as.set_action_name("win.save_as")
+        
+        btn_export = Gtk.Button(icon_name="export-symbolic")
+        btn_export.set_tooltip_text("Export to PDF")
+        btn_export.set_action_name("win.export")
+        
+        box_file.append(btn_open)
+        box_file.append(btn_save)
+        box_file.append(btn_save_as)
+        box_file.append(btn_export)
+        
+        return box_file
+
+    def build_viewbox(self):
         box_view = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         box_view.add_css_class("linked")
         
@@ -303,8 +311,9 @@ class MainWindow(Adw.ApplicationWindow):
         box_view.append(btn_dual)
         box_view.append(btn_cont)
         
-        ribbon_box.append(box_view)
-        
+        return box_view
+
+    def build_zoombox(self):
         box_zoom = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         box_zoom.add_css_class("linked")
         
@@ -322,11 +331,7 @@ class MainWindow(Adw.ApplicationWindow):
         box_zoom.append(btn_zoom_fit)
         box_zoom.append(btn_zoom_in)
         
-        ribbon_box.append(box_zoom)
-        
-        return ribbon_box
-        
-
+        return box_zoom
 
     def on_tool_toggled(self, btn, tool_name):
         if btn.get_active():
