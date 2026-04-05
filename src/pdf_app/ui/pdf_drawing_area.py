@@ -1,19 +1,23 @@
 import cairo
+import sys
 import gi
 gi.require_version('Gtk', '4.0')
 gi.require_version('Pango', '1.0')
 gi.require_version('PangoCairo', '1.0')
 from gi.repository import Gtk, Gdk, Pango, PangoCairo
 
-from pdf_app.document.render import render_page_to_surface
+from pdf_app.document.engine import dispatch_render_job, RenderContext, RenderPriority
 
 class PDFDrawingArea(Gtk.DrawingArea):
-    def __init__(self, page, scale, store):
+    def __init__(self, page, scale, store, uri: str, page_index: int):
         super().__init__()
         self.page = page
-        self.scale = scale
+        self.context = RenderContext(scale=scale)
         self.store = store
+        self.uri = uri
+        self.page_index = page_index
         self.surface = None
+        self._render_token = None
         
         self.set_focusable(True) 
         self.set_can_target(True) 
@@ -36,9 +40,15 @@ class PDFDrawingArea(Gtk.DrawingArea):
         self.queue_draw()
         
     def update_scale(self, scale):
-        self.scale = scale
-        self.surface = None
-        self.queue_draw()
+        if self.context.scale != scale:
+            if self._render_token:
+                self._render_token[0] = True
+                self._render_token = None
+            
+            # Temporary Upscaling During Zoom: Keep old surface but upgrade context
+            self.context = RenderContext(scale=scale)
+            # self.surface = None  <-- DO NOT set to None (Crucial for progressive zoom)
+            self.queue_draw()
 
   
     def get_handle_positions(self):
@@ -55,12 +65,12 @@ class PDFDrawingArea(Gtk.DrawingArea):
             x, y, w, h = r
             
             # TL
-            start_x = x * self.scale
-            start_y = y * self.scale
+            start_x = x * self.context.scale
+            start_y = y * self.context.scale
             
             # BR
-            end_x = (x + w) * self.scale
-            end_y = (y + h) * self.scale
+            end_x = (x + w) * self.context.scale
+            end_y = (y + h) * self.context.scale
             
             return (start_x, start_y), (end_x, end_y)
         
@@ -68,12 +78,12 @@ class PDFDrawingArea(Gtk.DrawingArea):
         last_rect = ann.rects[-1]
         
         # Start handle: Top-left of first rect (with offset for circle)
-        start_x = first_rect[0] * self.scale
-        start_y = first_rect[1] * self.scale - self.handle_radius
+        start_x = first_rect[0] * self.context.scale
+        start_y = first_rect[1] * self.context.scale - self.handle_radius
         
         # End handle: Bottom-right of last rect (with offset)
-        end_x = (last_rect[0] + last_rect[2]) * self.scale
-        end_y = (last_rect[1] + last_rect[3]) * self.scale + self.handle_radius
+        end_x = (last_rect[0] + last_rect[2]) * self.context.scale
+        end_y = (last_rect[1] + last_rect[3]) * self.context.scale + self.handle_radius
         
         return (start_x, start_y), (end_x, end_y)
 
@@ -93,10 +103,10 @@ class PDFDrawingArea(Gtk.DrawingArea):
          if not ann or ann.type != 'square' or not ann.rects: return False
          
          r = ann.rects[0]
-         rect_x = r[0] * self.scale
-         rect_y = r[1] * self.scale
-         rect_w = r[2] * self.scale
-         rect_h = r[3] * self.scale
+         rect_x = r[0] * self.context.scale
+         rect_y = r[1] * self.context.scale
+         rect_w = r[2] * self.context.scale
+         rect_h = r[3] * self.context.scale
          
          threshold = 10 # 5 radius * 2
          
@@ -153,10 +163,10 @@ class PDFDrawingArea(Gtk.DrawingArea):
             if ann.type == 'square':
                  # Recheck all 4 corners
                  r = ann.rects[0]
-                 x = r[0] * self.scale
-                 y = r[1] * self.scale
-                 w = r[2] * self.scale
-                 h = r[3] * self.scale
+                 x = r[0] * self.context.scale
+                 y = r[1] * self.context.scale
+                 w = r[2] * self.context.scale
+                 h = r[3] * self.context.scale
                  
                  # TL, TR, BL, BR
                  handles = [
@@ -184,8 +194,8 @@ class PDFDrawingArea(Gtk.DrawingArea):
                          return True
             
         # Check for MOVE (drag body)
-        pdf_x = start_x / self.scale
-        pdf_y = start_y / self.scale
+        pdf_x = start_x / self.context.scale
+        pdf_y = start_y / self.context.scale
         # Check if point inside any rect
         for r in ann.rects:
             # r is (x, y, w, h)
@@ -209,8 +219,8 @@ class PDFDrawingArea(Gtk.DrawingArea):
         cur_y = start_y + offset_y
 
         # Convert to PDF coords
-        pdf_x = cur_x / self.scale
-        pdf_y = cur_y / self.scale
+        pdf_x = cur_x / self.context.scale
+        pdf_y = cur_y / self.context.scale
 
         # HANDLE MOVE
         if self._resizing_handle == 'move':
@@ -218,8 +228,8 @@ class PDFDrawingArea(Gtk.DrawingArea):
             if drag_dist < 5.0:
                  return
 
-            dx = offset_x / self.scale
-            dy = offset_y / self.scale
+            dx = offset_x / self.context.scale
+            dy = offset_y / self.context.scale
 
             new_rects = []
             for r in self._old_rects:
@@ -303,15 +313,59 @@ class PDFDrawingArea(Gtk.DrawingArea):
         # Reset cursor to default
         self.set_cursor(None)
 
+    def _on_render_finished(self, surface, context: RenderContext):
+        is_exact = (context == self.context)
+        is_fast = (context.scale == self.context.scale * 0.5)
+
+        if not (is_exact or is_fast):
+            return
+            
+        # Prevent old fast render from wiping out the finished exact render if they return out of order
+        if is_fast and hasattr(self, 'surface_context') and self.surface_context == self.context:
+            return
+
+        self.surface = surface
+        self.surface_context = context
+        if is_exact:
+            self._render_token = None
+            
+        if self.surface:
+            self.queue_draw()
+
     def on_draw(self, area, c, width, height):
-        #  Render Surface (PDF + Background)
-        if self.surface is None:
-            self.surface = render_page_to_surface(self.page, self.scale)
-        
-        c.set_source_surface(self.surface, 0, 0)
-        c.paint()
-        
-        
+        # 1. Draw Cached Surface (with temp scaling if outdated)
+        if self.surface is not None:
+            c.save()
+            if hasattr(self, 'surface_context') and self.surface_context.scale != self.context.scale:
+                ratio = self.context.scale / self.surface_context.scale
+                c.scale(ratio, ratio)
+            c.set_source_surface(self.surface, 0, 0)
+            c.paint()
+            c.restore()
+        else:
+            c.set_source_rgb(1.0, 1.0, 1.0)
+            c.paint()
+            
+        # 2. Check if a high-res queue needs to be requested
+        if self.surface is None or not hasattr(self, 'surface_context') or self.surface_context != self.context:
+            if not self._render_token:
+                self._render_token = [False]
+                
+                # Progressive Rendering Phase 1: Fast 0.5x Scale
+                if self.surface is None:
+                    fast_ctx = RenderContext(scale=self.context.scale * 0.5, rotation=self.context.rotation)
+                    dispatch_render_job(
+                        self.uri, self.page_index, fast_ctx, 
+                        RenderPriority.PRELOAD, self._on_render_finished, self._render_token
+                    )
+                
+                # Progressive Rendering Phase 2: High priority exact render
+                dispatch_render_job(
+                    self.uri, self.page_index, self.context, 
+                    RenderPriority.VISIBLE, self._on_render_finished, self._render_token
+                )
+            return
+            
         if self.store:
             try:
                 page_idx = self.page.get_index()
@@ -326,7 +380,7 @@ class PDFDrawingArea(Gtk.DrawingArea):
 
             if highlight_anns:
                 c.save()
-                c.scale(self.scale, self.scale)
+                c.scale(self.context.scale, self.context.scale)
                 c.set_operator(cairo.Operator.MULTIPLY)
                 for ann in highlight_anns:
                     
@@ -341,7 +395,7 @@ class PDFDrawingArea(Gtk.DrawingArea):
 
             # Pass for others (Over)
             c.save()
-            c.scale(self.scale, self.scale) 
+            c.scale(self.context.scale, self.context.scale) 
             
             for ann in other_anns:
                 r, g, b, a = ann.color
@@ -436,10 +490,10 @@ class PDFDrawingArea(Gtk.DrawingArea):
             for r in ann.rects:
                 x, y, w, h = r
                 # Convert to widget coords
-                wx = x * self.scale
-                wy = y * self.scale
-                ww = w * self.scale
-                wh = h * self.scale
+                wx = x * self.context.scale
+                wy = y * self.context.scale
+                ww = w * self.context.scale
+                wh = h * self.context.scale
                 c.rectangle(wx, wy, ww, wh)
                 c.stroke()
             c.restore()
@@ -448,10 +502,10 @@ class PDFDrawingArea(Gtk.DrawingArea):
         if ann.type == 'square':
              if not ann.rects: return
              r = ann.rects[0]
-             x = r[0] * self.scale
-             y = r[1] * self.scale
-             w = r[2] * self.scale
-             h = r[3] * self.scale
+             x = r[0] * self.context.scale
+             y = r[1] * self.context.scale
+             w = r[2] * self.context.scale
+             h = r[3] * self.context.scale
              
              # Draw Box
              c.set_line_width(1)
@@ -501,14 +555,14 @@ class PDFDrawingArea(Gtk.DrawingArea):
         last_rect = ann.rects[-1]
         
         # Start Handle: Top-Left of First Rect
-        x1 = first_rect[0] * self.scale
-        y1 = first_rect[1] * self.scale
-        h1 = first_rect[3] * self.scale
+        x1 = first_rect[0] * self.context.scale
+        y1 = first_rect[1] * self.context.scale
+        h1 = first_rect[3] * self.context.scale
         
         # End Handle: Bottom-Right of Last Rect
-        x2 = (last_rect[0] + last_rect[2]) * self.scale
-        y2 = (last_rect[1] + last_rect[3]) * self.scale
-        h2 = last_rect[3] * self.scale
+        x2 = (last_rect[0] + last_rect[2]) * self.context.scale
+        y2 = (last_rect[1] + last_rect[3]) * self.context.scale
+        h2 = last_rect[3] * self.context.scale
         
         handle_radius = 10  
         
@@ -544,7 +598,7 @@ class PDFDrawingArea(Gtk.DrawingArea):
         
         c.set_source_rgba(0.2, 0.6, 1.0, 0.3) # Faint blue
         for r in ann.rects:
-             c.rectangle(r[0]*self.scale, r[1]*self.scale, r[2]*self.scale, r[3]*self.scale)
+             c.rectangle(r[0]*self.context.scale, r[1]*self.context.scale, r[2]*self.context.scale, r[3]*self.context.scale)
              c.fill()
 
 

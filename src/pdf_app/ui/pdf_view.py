@@ -1,6 +1,7 @@
 import gi
 gi.require_version('Gtk', '4.0')
-from gi.repository import Gtk, Adw, GLib, Gdk, GObject, Gio
+gi.require_version('Graphene', '1.0')
+from gi.repository import Gtk, Adw, GLib, Gdk, GObject, Gio, Graphene
 import threading
 import bisect
 
@@ -20,12 +21,13 @@ class PageSlot:
 
 class LazyPageContainer(Gtk.Box):
 
-    def __init__(self, document, page_index, store, scale, base_w, base_h):
+    def __init__(self, document, page_index, store, scale, base_w, base_h, uri):
         super().__init__()
         self.document = document
         self.page_number = page_index
         self.store = store
         self.scale = scale
+        self.uri = uri
 
         self.page_view = None
         self.is_loaded = False
@@ -65,7 +67,7 @@ class LazyPageContainer(Gtk.Box):
         page = self.document.get_page(self.page_number)
         self.base_w, self.base_h = page.get_size()
 
-        self.page_view = PDFPageView(page, self.page_number, self.store)
+        self.page_view = PDFPageView(page, self.page_number, self.store, self.uri)
         self.page_view.update_scale(self.scale)
         if tool_name:
             self.page_view.activate_tool(tool_name)
@@ -185,6 +187,7 @@ class PDFView(Gtk.ScrolledWindow):
         self._page_offsets = []
         self._total_content_height = 0
         self._in_rebuild = False
+        self._suppress_scroll = False
         self._rebuild_count = 0
 
         self.current_page_index = 0
@@ -262,37 +265,68 @@ class PDFView(Gtk.ScrolledWindow):
             self.page_box.remove(child)
             child = nc
 
-        self._top_spacer.set_size_request(1, 0)
-        self._bottom_spacer.set_size_request(1, max(0, self._total_content_height))
-        self.page_box.append(self._top_spacer)
-        self.page_box.append(self._bottom_spacer)
+        self._active_containers = {}
+        self._visible_range = (0, 0)
 
-        self._initial_load = True
-        self._load_initial_pages()
-        
-        GLib.idle_add(self._process_lazy_load)
-
-    def _load_initial_pages(self):
-        initial_count = min(6, len(self.page_slots))
-        if initial_count == 0:
-            return
-
-        tool_name = getattr(self, 'tool_name', None)
-
-        # containers for pages 0..initial_count
-        for i in range(initial_count):
-            slot = self.page_slots[i]
+        # Pre-create ALL containers. Each starts as a lightweight placeholder.
+        # This ensures the Box DOM never changes during scrolling, eliminating scroll jumps.
+        for slot in self.page_slots:
             container = LazyPageContainer(
-                self.document, i, self.store, self.scale,
-                slot.base_w, slot.base_h
+                self.document, slot.page_number, self.store, self.scale,
+                slot.base_w, slot.base_h, self.file.get_uri()
             )
-            self._active_containers[i] = container
-            # Set the loading flag — _do_load checks this guard
-            container.is_loading = True
-            # Load synchronously — no idle_add delay
-            container._do_load(tool_name)
+            self._active_containers[slot.page_number] = container
 
-        self._rebuild_visible_range(0, initial_count)
+        self._rebuild_page_box_layout()
+
+        # Eagerly load first few pages
+        initial_count = min(6, len(self.page_slots))
+        tool_name = getattr(self, 'tool_name', None)
+        for i in range(initial_count):
+            c = self._active_containers[i]
+            c.is_loading = True
+            c._do_load(tool_name)
+
+        self._visible_range = (0, max(initial_count, 1))
+        self._initial_load = True
+        GLib.idle_add(self._process_lazy_load)
+        GLib.timeout_add(1000, lambda: setattr(self, '_initial_load', False) or False)
+
+    def _rebuild_page_box_layout(self):
+        """Re-parent all containers into the page_box for current view mode.
+        Called once at setup and whenever dual mode is toggled."""
+        # Detach all containers from their current parents
+        for container in self._active_containers.values():
+            parent = container.get_parent()
+            if parent:
+                if parent == self.page_box:
+                    self.page_box.remove(container)
+                else:
+                    parent.remove(container)
+                    if parent.get_parent() == self.page_box:
+                        self.page_box.remove(parent)
+
+        # Clear any leftover children (old row boxes, spacers, etc)
+        child = self.page_box.get_first_child()
+        while child:
+            nc = child.get_next_sibling()
+            self.page_box.remove(child)
+            child = nc
+
+        # Rebuild layout
+        if self.is_dual_mode:
+            i = 0
+            while i < len(self.page_slots):
+                row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=20)
+                row.set_halign(Gtk.Align.CENTER)
+                row.append(self._active_containers[i])
+                if i + 1 < len(self.page_slots):
+                    row.append(self._active_containers[i + 1])
+                self.page_box.append(row)
+                i += 2
+        else:
+            for idx in sorted(self._active_containers.keys()):
+                self.page_box.append(self._active_containers[idx])
 
     def _recompute_page_offsets(self):
         spacing = 10
@@ -333,134 +367,27 @@ class PDFView(Gtk.ScrolledWindow):
             self._in_rebuild = False
 
     def _do_rebuild_visible_range(self, start_idx, end_idx):
-    
-        old_start, old_end = self._visible_range
-        tool_name = getattr(self, 'tool_name', None)
+        # No DOM changes needed — all containers are already in the Box.
+        # Just control loading/unloading.
+        self._suppress_scroll = True
 
-        # Destroy containers that are now far from view
-        destroy_buffer = 3
-        for idx in list(self._active_containers.keys()):
-            if idx < start_idx - destroy_buffer or idx >= end_idx + destroy_buffer:
-                container = self._active_containers.pop(idx)
-                container.prepare_for_removal()
+        load_buffer = 2  # Extra pages to keep loaded beyond visible range
+        unload_beyond = 10  # Unload pages this far from visible range
+
+        for idx, container in self._active_containers.items():
+            in_range = start_idx <= idx < end_idx
+            in_buffer = (start_idx - load_buffer) <= idx < (end_idx + load_buffer)
+            far_away = idx < (start_idx - unload_beyond) or idx >= (end_idx + unload_beyond)
+
+            if in_range or in_buffer:
+                # Update scale for visible/buffer pages
+                container.update_scale(self.scale)
+            elif far_away and container.is_loaded:
+                # Unload distant pages to free memory
                 container.unload()
-                parent = container.get_parent()
-                if parent:
-                    if parent == self.page_box:
-                        self.page_box.remove(container)
-                    else:
-                        parent.remove(container)
-                        if parent.get_parent() == self.page_box:
-                            self.page_box.remove(parent)
-
-        # Create any new containers (don't add to tree yet)
-        for i in range(start_idx, end_idx):
-            if i not in self._active_containers:
-                slot = self.page_slots[i]
-                container = LazyPageContainer(
-                    self.document, i, self.store, self.scale,
-                    slot.base_w, slot.base_h
-                )
-                self._active_containers[i] = container
-            else:
-                self._active_containers[i].update_scale(self.scale)
-
-        #  Compute spacer heights
-        if start_idx > 0 and start_idx < len(self._page_offsets):
-            top_h = self._page_offsets[start_idx] - 20
-        else:
-            top_h = 0
-
-        if end_idx < len(self._page_offsets):
-            bottom_h = self._total_content_height - self._page_offsets[end_idx]
-        else:
-            bottom_h = 0
-
-        #  Full rebuild of page_box only when needed (dual mode or first build)
-        #    Otherwise do incremental: only detach containers that left the range
-        needs_full_rebuild = (
-            self.is_dual_mode or
-            old_start == old_end  # First build
-        )
-
-        if needs_full_rebuild:
-            # Detach all containers from page_box 
-            for idx, container in self._active_containers.items():
-                container.prepare_for_removal()
-                parent = container.get_parent()
-                if parent:
-                    if parent == self.page_box:
-                        self.page_box.remove(container)
-                    else:
-                        parent.remove(container)
-                        if parent.get_parent() == self.page_box:
-                            self.page_box.remove(parent)
-
-            # Clear page_box
-            child = self.page_box.get_first_child()
-            while child:
-                nc = child.get_next_sibling()
-                self.page_box.remove(child)
-                child = nc
-
-            # Rebuild: top_spacer, containers, bottom_spacer
-            self._top_spacer.set_size_request(1, max(0, int(top_h)))
-            self.page_box.append(self._top_spacer)
-
-            if self.is_dual_mode:
-                i = start_idx
-                if i % 2 != 0:
-                    i -= 1
-                while i < end_idx:
-                    row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=20)
-                    row.set_halign(Gtk.Align.CENTER)
-                    if i in self._active_containers:
-                        row.append(self._active_containers[i])
-                    if i + 1 < end_idx and i + 1 in self._active_containers:
-                        row.append(self._active_containers[i + 1])
-                    self.page_box.append(row)
-                    i += 2
-            else:
-                for i in range(start_idx, end_idx):
-                    if i in self._active_containers:
-                        self.page_box.append(self._active_containers[i])
-
-            self._bottom_spacer.set_size_request(1, max(0, int(bottom_h)))
-            self.page_box.append(self._bottom_spacer)
-        else:
-
-            # Remove containers outside new range from page_box
-            for idx in range(old_start, old_end):
-                if idx < start_idx or idx >= end_idx:
-                    container = self._active_containers.get(idx)
-                    if container and container.get_parent() == self.page_box:
-                        self.page_box.remove(container)
-
-            self._top_spacer.set_size_request(1, max(0, int(top_h)))
-
-            if start_idx < old_start:
-
-                insert_before = self._top_spacer.get_next_sibling()
-                for i in range(start_idx, min(old_start, end_idx)):
-                    container = self._active_containers.get(i)
-                    if container and not container.get_parent():
-                        self.page_box.insert_child_after(container, self._top_spacer if i == start_idx else self._active_containers.get(i - 1))
-
-            # Add new containers after old range 
-            if end_idx > old_end:
-                for i in range(max(old_end, start_idx), end_idx):
-                    container = self._active_containers.get(i)
-                    if container and not container.get_parent():
-                        # Insert before bottom_spacer
-                        prev_sibling = self._active_containers.get(i - 1) if i > start_idx else self._top_spacer
-                        if prev_sibling and prev_sibling.get_parent() == self.page_box:
-                            self.page_box.insert_child_after(container, prev_sibling)
-                        else:
-                            self.page_box.insert_child_after(container, self._bottom_spacer.get_prev_sibling() or self._top_spacer)
-
-            self._bottom_spacer.set_size_request(1, max(0, int(bottom_h)))
 
         self._visible_range = (start_idx, end_idx)
+        self._suppress_scroll = False
 
     # ========== ANNOTATION LOADING ==========
 
@@ -507,11 +434,13 @@ class PDFView(Gtk.ScrolledWindow):
         target_index = self.current_page_index
         self.scale = scale
         self._gesture_start_scale = scale
+        self._suppress_scroll = True
         self._apply_zoom()
         self._recompute_page_offsets()
         # Rebuild visible range with new scale
         self._visible_range = (0, 0)  # Force rebuild
         self._process_lazy_load()
+        self._suppress_scroll = False
         GLib.idle_add(self.scroll_to_page, target_index)
 
     def _iter_all_page_views(self):
@@ -570,26 +499,35 @@ class PDFView(Gtk.ScrolledWindow):
         old_scroll_x = hadj.get_value()
         old_scroll_y = vadj.get_value()
 
+        # Document coordinate under the cursor
         doc_x = old_scroll_x + focal[0]
         doc_y = old_scroll_y + focal[1]
 
         ratio = new_scale / self.scale
 
         self.scale = new_scale
+        self._suppress_scroll = True
         self._apply_zoom()
         self._recompute_page_offsets()
 
+        # Where that same document point ends up after zoom
         new_doc_x = doc_x * ratio
         new_doc_y = doc_y * ratio
 
-        new_scroll_x = new_doc_x - focal[0]
-        new_scroll_y = new_doc_y - focal[1]
+        new_scroll_x = max(0, new_doc_x - focal[0])
+        new_scroll_y = max(0, new_doc_y - focal[1])
 
-        hadj.set_value(max(0, new_scroll_x))
-        vadj.set_value(max(0, new_scroll_y))
+        # With all containers in the Box, GTK knows the total height.
+        # Ensure upper bounds are sufficient before setting value.
+        vadj.set_upper(max(vadj.get_upper(), new_scroll_y + vadj.get_page_size() + 100))
+        hadj.set_upper(max(hadj.get_upper(), new_scroll_x + hadj.get_page_size() + 100))
+
+        hadj.set_value(new_scroll_x)
+        vadj.set_value(new_scroll_y)
+        self._suppress_scroll = False
 
     def _apply_zoom(self):
-        """Apply current scale to active containers only."""
+        """Apply current scale to all containers (updates placeholder sizes for layout)."""
         for container in self._active_containers.values():
             container.update_scale(self.scale)
         self.emit('zoom-changed', self.scale)
@@ -597,7 +535,7 @@ class PDFView(Gtk.ScrolledWindow):
     # ========== SCROLL & LAZY LOAD ==========
 
     def on_scroll_changed(self, adjustment):
-        if self._in_rebuild:  
+        if self._in_rebuild or self._suppress_scroll:
             return
         if not self._page_offsets:
             return
@@ -618,7 +556,7 @@ class PDFView(Gtk.ScrolledWindow):
 
         if getattr(self, '_lazy_load_source', 0):
             GLib.source_remove(self._lazy_load_source)
-        self._lazy_load_source = GLib.timeout_add(80, self._process_lazy_load)
+        self._lazy_load_source = GLib.timeout_add(16, self._process_lazy_load)
 
     def _process_lazy_load(self):
         self._lazy_load_source = 0
@@ -634,17 +572,36 @@ class PDFView(Gtk.ScrolledWindow):
         if vp_h <= 1:
             return False
 
-        visible_start = vp_y - vp_h
-        visible_end = vp_y + (vp_h * 2)
+        # Predictive scroll tracking
+        if not hasattr(self, '_last_vp_y'):
+            self._last_vp_y = vp_y
+        scroll_down = vp_y >= self._last_vp_y
+        self._last_vp_y = vp_y
 
-        start_idx = bisect.bisect_right(self._page_offsets, visible_start) - 1
-        start_idx = max(0, start_idx)
+        overscan_top = 4
+        overscan_bot = 4
+        if scroll_down:
+            overscan_bot = 6
+            overscan_top = 2
+        else:
+            overscan_top = 6
+            overscan_bot = 2
 
-        end_idx = bisect.bisect_right(self._page_offsets, visible_end)
-        end_idx = min(end_idx + 1, len(self.page_slots))
+        # 1 vp_h buffer is basically 1 screen up and down
+        visible_start = max(0, vp_y)
+        visible_end = vp_y + vp_h
 
-        # limit visible pages
-        max_pages = 12 if self.is_dual_mode else 10
+        base_start_idx = bisect.bisect_right(self._page_offsets, visible_start) - 1
+        base_start_idx = max(0, base_start_idx)
+
+        base_end_idx = bisect.bisect_right(self._page_offsets, visible_end)
+        base_end_idx = min(base_end_idx + 1, len(self.page_slots))
+
+        start_idx = max(0, base_start_idx - overscan_top)
+        end_idx = min(len(self.page_slots), base_end_idx + overscan_bot)
+
+        # limit visible pages (must be high enough to cover overscan)
+        max_pages = 24 if self.is_dual_mode else 20
         if end_idx - start_idx > max_pages:
             end_idx = start_idx + max_pages
 
@@ -728,10 +685,13 @@ class PDFView(Gtk.ScrolledWindow):
         if self.is_dual_mode == enabled:
             return
         self.is_dual_mode = enabled
+        self._suppress_scroll = True
+        self._rebuild_page_box_layout()
         self._recompute_page_offsets()
         # Force rebuild of visible range
         self._visible_range = (0, 0)
         self._process_lazy_load()
+        self._suppress_scroll = False
 
         if enabled:
             GLib.timeout_add(100, self._fit_two_pages)
@@ -807,9 +767,22 @@ class PDFView(Gtk.ScrolledWindow):
 
         if state & Gdk.ModifierType.CONTROL_MASK:
             event = controller.get_current_event()
+            focal = None
             if event:
-                x, y = event.get_position()
-                focal = (x, y)
+                # event.get_position() returns surface-relative coords (includes header bar)
+                # Translate to ScrolledWindow-local coords for correct focal math
+                sx, sy = event.get_position()
+                native = self.get_native()
+                if native:
+                    nx, ny = native.get_surface_transform()
+                    p = Graphene.Point()
+                    p.x = sx - nx
+                    p.y = sy - ny
+                    success, pt = native.compute_point(self, p)
+                    if success:
+                        focal = (pt.x, pt.y)
+                if focal is None:
+                    focal = self._get_viewport_center_focal()
             else:
                 focal = self._get_viewport_center_focal()
 

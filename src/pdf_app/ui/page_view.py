@@ -4,7 +4,6 @@ gi.require_version('Gtk', '4.0')
 gi.require_version('Poppler', '0.18')
 from gi.repository import Gtk, Gdk, GLib, Poppler
 
-from pdf_app.document.render import render_page_to_surface
 from pdf_app.document.store import Annotation, AnnotationStore
 from pdf_app.ui.text_dialog import TextAnnotationDialog
 
@@ -13,16 +12,17 @@ from pdf_app.ui.text_editor import TextEditorPopover
 
 class PDFPageView(Gtk.Overlay):
 
-    def __init__(self, page, page_number, store: AnnotationStore):
+    def __init__(self, page, page_number, store: AnnotationStore, uri: str):
         super().__init__()
         self.page = page
         self.page_number = page_number
         self.store = store
+        self.uri = uri
         self.scale = 1.0
         self.text_mode = False 
         self.current_tool = None 
         
-        self.drawing_area = PDFDrawingArea(page, self.scale, store)
+        self.drawing_area = PDFDrawingArea(page, self.scale, store, self.uri, self.page_number)
         self.set_child(self.drawing_area)
         
         

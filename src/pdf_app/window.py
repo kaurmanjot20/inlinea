@@ -459,7 +459,7 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _deferred_sidebar_load(self, view):
         if view.get_parent() and hasattr(view, 'sidebar') and view.sidebar and view.document:
-            view.sidebar.load_document(view.document)
+            view.sidebar.load_document(view.document, view.file.get_uri())
         return False
 
     def update_tab_status(self, page, is_dirty):

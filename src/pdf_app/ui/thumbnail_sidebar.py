@@ -3,34 +3,32 @@ gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
 from gi.repository import Gtk, Gdk, Gio, GObject, Adw, GLib
 
-from pdf_app.document.render import render_page_to_surface
+from pdf_app.document.engine import dispatch_render_job, RenderContext, RenderPriority
 import cairo
 
 class ThumbnailObject(GObject.Object):
-    def __init__(self, document, page_number):
+    def __init__(self, document, uri, page_number):
         super().__init__()
         self.document = document
+        self.uri = uri
         self.page_number = page_number
         self.surface = None
-        self._idle_source_id = 0   # GLib source ID for pending render
-        self._bound = False        # Whether currently bound to a visible widget
+        self._bound = False
+        self._render_token = None
+        self._draw_area = None
+        self._page_w = 0
+        self._thumb_w = 60
 
 class ThumbnailSidebar(Gtk.Box):
     __gsignals__ = {
         'page-selected': (GObject.SignalFlags.RUN_FIRST, None, (int,))
     }
 
-    # Only 1 concurrent thumbnail render so Poppler doesn't starve the UI event loop
-    _MAX_CONCURRENT_RENDERS = 1
-    _active_renders = 0
-    _RENDER_INTERVAL_MS = 150  # Gap between renders to keep UI responsive
-
     def __init__(self):
         super().__init__(orientation=Gtk.Orientation.VERTICAL)
         self.set_size_request(200, -1)
         self._programmatic_update = False
-
-        self._render_queue = []
+        self._render_started = False
 
         self.scrolled = Gtk.ScrolledWindow()
         self.scrolled.set_vexpand(True)
@@ -61,21 +59,20 @@ class ThumbnailSidebar(Gtk.Box):
         self.grid_view.set_min_columns(cols)
         self.grid_view.set_max_columns(cols)
         
-    def load_document(self, document):
+    def load_document(self, document, uri):
         self.store.remove_all()
-        self._render_queue.clear()
-        ThumbnailSidebar._active_renders = 0
         self._render_started = False
         if not document:
             return
             
         self.document = document
+        self.uri = uri
         n_pages = document.get_n_pages()
 
         for i in range(n_pages):
-            self.store.append(ThumbnailObject(self.document, i))
+            self.store.append(ThumbnailObject(self.document, self.uri, i))
 
-        # Delay thumbnail rendering by 2s so main-view pages load without competition
+        # Delay thumbnail rendering by 2s so main-view pages load first
         GLib.timeout_add(2000, self._start_rendering)
 
     def select_page(self, index):
@@ -83,18 +80,14 @@ class ThumbnailSidebar(Gtk.Box):
             self._programmatic_update = True
             try:
                 self.selection_model.set_selected(index)
-                # Auto-scroll the sidebar to show the current page thumbnail
                 n_items = self.store.get_n_items()
                 if hasattr(self.grid_view, 'scroll_to') and index < n_items:
                     self.grid_view.scroll_to(index, Gtk.ListScrollFlags.NONE, None)
                 elif n_items > 0:
-                    # Fallback for GTK < 4.12: estimate scroll position
-                    n_items = self.store.get_n_items()
-                    if n_items > 0:
-                        vadj = self.scrolled.get_vadjustment()
-                        fraction = index / max(1, n_items - 1)
-                        max_val = vadj.get_upper() - vadj.get_page_size()
-                        vadj.set_value(fraction * max(0, max_val))
+                    vadj = self.scrolled.get_vadjustment()
+                    fraction = index / max(1, n_items - 1)
+                    max_val = vadj.get_upper() - vadj.get_page_size()
+                    vadj.set_value(fraction * max(0, max_val))
             finally:
                 self._programmatic_update = False
 
@@ -112,7 +105,6 @@ class ThumbnailSidebar(Gtk.Box):
         box.set_margin_start(4)
         box.set_margin_end(4)
         
-        # DrawingArea for Thumbnail
         da = Gtk.DrawingArea()
         da.set_size_request(60, 80) 
         da.set_halign(Gtk.Align.CENTER)
@@ -138,7 +130,7 @@ class ThumbnailSidebar(Gtk.Box):
         
         label.set_text(f"{thumbnail_obj.page_number + 1}")
         
-        # JIT fetch to get size, then let it drop out of scope to prevent OOM
+        # Get page dimensions for aspect ratio
         temp_page = thumbnail_obj.document.get_page(thumbnail_obj.page_number)
         w, h = temp_page.get_size()
         aspect = w / h if h != 0 else 1
@@ -148,78 +140,61 @@ class ThumbnailSidebar(Gtk.Box):
         
         da.set_draw_func(self.draw_thumbnail, thumbnail_obj)
         
-        # Store references for deferred rendering
+        # Store refs for deferred rendering
         thumbnail_obj._draw_area = da
         thumbnail_obj._page_w = w
         thumbnail_obj._thumb_w = thumb_w
         
-        # Only enqueue rendering after the initial delay has passed
-        if self._render_started and thumbnail_obj.surface is None:
-            self._enqueue_render(thumbnail_obj, w, da, thumb_w)
+        # If already rendered, just redraw. Otherwise dispatch render.
+        if thumbnail_obj.surface is not None:
+            da.queue_draw()
+        elif self._render_started:
+            self._dispatch_thumb_render(thumbnail_obj)
 
     def _start_rendering(self):
+        """Called after 2s delay to begin thumbnail renders."""
         self._render_started = True
         for i in range(self.store.get_n_items()):
             item = self.store.get_item(i)
             if (item and item._bound and item.surface is None
-                    and hasattr(item, '_draw_area') and item._draw_area):
-                self._enqueue_render(item, item._page_w, item._draw_area, item._thumb_w)
+                    and item._draw_area and item._page_w > 0):
+                self._dispatch_thumb_render(item)
         return False
 
-    def _enqueue_render(self, t_obj, page_w, draw_area, thumb_w):
-        if ThumbnailSidebar._active_renders < ThumbnailSidebar._MAX_CONCURRENT_RENDERS:
-            ThumbnailSidebar._active_renders += 1
-            sid = GLib.timeout_add(ThumbnailSidebar._RENDER_INTERVAL_MS,
-                                   self._render_thumb_idle, t_obj, page_w, draw_area, thumb_w)
-            t_obj._idle_source_id = sid
-        else:
-            self._render_queue.append((t_obj, page_w, draw_area, thumb_w))
-
-    def _render_thumb_idle(self, t_obj, page_w, draw_area, tw):
-        """Render one thumbnail, then drain the queue."""
-        t_obj._idle_source_id = 0
-        try:
-            # Skip if the widget was unbound before this fired
-            if not t_obj._bound or not draw_area.get_parent():
-                return False
-            scale = tw / page_w
-            temp = t_obj.document.get_page(t_obj.page_number)
-            surface = render_page_to_surface(temp, scale=scale)
-            t_obj.surface = surface
-            draw_area.queue_draw()
-        finally:
-            ThumbnailSidebar._active_renders = max(0, ThumbnailSidebar._active_renders - 1)
-            self._drain_render_queue()
-        return False
-
-    def _drain_render_queue(self):
-        """Start the next queued render if under the concurrency limit."""
-        while (self._render_queue and
-               ThumbnailSidebar._active_renders < ThumbnailSidebar._MAX_CONCURRENT_RENDERS):
-            t_obj, page_w, draw_area, thumb_w = self._render_queue.pop(0)
-            
-            if not t_obj._bound or not draw_area.get_parent():
-                continue
-            ThumbnailSidebar._active_renders += 1
-            sid = GLib.timeout_add(ThumbnailSidebar._RENDER_INTERVAL_MS,
-                                   self._render_thumb_idle, t_obj, page_w, draw_area, thumb_w)
-            t_obj._idle_source_id = sid
-            break
+    def _dispatch_thumb_render(self, t_obj):
+        """Dispatch a single thumbnail render job to the engine."""
+        if t_obj._render_token:
+            t_obj._render_token[0] = True
+        
+        t_obj._render_token = [False]
+        scale = t_obj._thumb_w / t_obj._page_w if t_obj._page_w > 0 else 0.1
+        
+        draw_area = t_obj._draw_area
+        
+        def _on_thumb_done(surface, context):
+            if not t_obj._bound or t_obj._render_token is None or t_obj._render_token[0]:
+                return
+            if surface is not None:
+                t_obj.surface = surface
+                if draw_area and draw_area.get_parent():
+                    draw_area.queue_draw()
+        
+        ctx = RenderContext(scale=scale)
+        dispatch_render_job(
+            t_obj.uri, t_obj.page_number, ctx,
+            RenderPriority.THUMBNAIL, _on_thumb_done, t_obj._render_token
+        )
 
     def on_unbind(self, factory, list_item):
-        # Cancel any pending idle render BEFORE it fires
         item = list_item.get_item()
         if item:
             item._bound = False
-            item._draw_area = None
-            if item._idle_source_id:
-                GLib.source_remove(item._idle_source_id)
-                item._idle_source_id = 0
-                ThumbnailSidebar._active_renders = max(0, ThumbnailSidebar._active_renders - 1)
-                self._drain_render_queue()
-            item.surface = None
+            # Cancel pending render but keep the cached surface
+            if item._render_token:
+                item._render_token[0] = True
+                item._render_token = None
 
-        # Clear draw func to prevent memory buildup
+        # Clear draw func
         box = list_item.get_child()
         if box:
             da = box.get_first_child()
@@ -233,4 +208,3 @@ class ThumbnailSidebar(Gtk.Box):
         else:
             c.set_source_rgb(0.92, 0.92, 0.92)
             c.paint()
-
