@@ -154,10 +154,29 @@ class PDFPageView(Gtk.Overlay):
         if handled:
             gesture.set_state(Gtk.EventSequenceState.CLAIMED)
         else:
-            self.handle_click_logic(start_x, start_y)
             gesture.set_state(Gtk.EventSequenceState.DENIED)
 
     def handle_click_logic(self, x, y):
+        if hasattr(self.drawing_area, 'pdf_links') and self.drawing_area.pdf_links:
+            pdf_x = x / self.scale
+            pdf_y = y / self.scale
+            for link in self.drawing_area.pdf_links:
+                for r in link['rects']:
+                    if r[0] <= pdf_x <= r[0] + r[2] and r[1] <= pdf_y <= r[1] + r[3]:
+                        uri = link['uri']
+                        from pdf_app.utils.links import is_safe_url
+                        if is_safe_url(uri):
+                            try:
+                                import gi
+                                gi.require_version('Gtk', '4.0')
+                                from gi.repository import Gtk
+                                launcher = Gtk.UriLauncher.new(uri)
+                                parent = self.get_root() if hasattr(self, 'get_root') else None
+                                launcher.launch(parent, None, None)
+                            except Exception as e:
+                                pass
+                        return
+
         if self.current_tool == 'text':
             self.create_text_annotation_at_click(x, y)
             return
