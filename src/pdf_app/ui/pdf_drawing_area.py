@@ -37,6 +37,17 @@ class PDFDrawingArea(Gtk.DrawingArea):
         self.handle_radius = 12  
         self._old_rects = None  # Store original rects for undo
         
+        self.pdf_links = []
+        self.hovered_link = None
+        
+        from gi.repository import GLib
+        GLib.idle_add(self._extract_links)
+        
+        motion = Gtk.EventControllerMotion()
+        motion.connect("motion", self._on_motion)
+        motion.connect("leave", self._on_leave)
+        self.add_controller(motion)
+        
         self.queue_draw()
         
     def update_scale(self, scale):
@@ -50,7 +61,45 @@ class PDFDrawingArea(Gtk.DrawingArea):
             # self.surface = None  <-- DO NOT set to None (Crucial for progressive zoom)
             self.queue_draw()
 
-  
+    def _extract_links(self):
+        from pdf_app.utils.links import extract_embedded_links, extract_text_links
+        self.pdf_links.extend(extract_embedded_links(self.page))
+        self.pdf_links.extend(extract_text_links(self.page))
+        if self.pdf_links:
+            self.queue_draw()
+        return False
+
+    def _on_motion(self, controller, x, y):
+        if self.pdf_links:
+            pdf_x = x / self.context.scale
+            pdf_y = y / self.context.scale
+            
+            new_hover = None
+            for link in self.pdf_links:
+                for r in link['rects']:
+                    if r[0] <= pdf_x <= r[0] + r[2] and r[1] <= pdf_y <= r[1] + r[3]:
+                        new_hover = link
+                        break
+                if new_hover:
+                    break
+                    
+            if new_hover != self.hovered_link:
+                self.hovered_link = new_hover
+                if self.hovered_link:
+                    self.set_cursor(Gdk.Cursor.new_from_name("pointer", None))
+                    self.set_tooltip_text(self.hovered_link['uri'])
+                else:
+                    self.set_cursor(None)
+                    self.set_tooltip_text("")
+                self.queue_draw()
+
+    def _on_leave(self, controller):
+        if self.hovered_link:
+            self.hovered_link = None
+            self.set_cursor(None)
+            self.set_tooltip_text("")
+            self.queue_draw()
+
     def get_handle_positions(self):
         ann = self.selected_annotation
         if not ann or not ann.rects:
@@ -431,6 +480,19 @@ class PDFDrawingArea(Gtk.DrawingArea):
                 c.rectangle(rect.x, rect.y, rect.width, rect.height)
                 
             c.fill()
+
+        # Draw Active Hovered Link
+        if self.hovered_link:
+            c.set_source_rgba(0.2, 0.5, 0.8, 0.15) # Faint blue highlight
+            for r in self.hovered_link['rects']:
+                c.rectangle(r[0] * self.context.scale, r[1] * self.context.scale, r[2] * self.context.scale, r[3] * self.context.scale)
+            c.fill()
+            c.set_source_rgba(0.2, 0.5, 0.8, 0.5)
+            c.set_line_width(1.0)
+            for r in self.hovered_link['rects']:
+                c.move_to(r[0] * self.context.scale, (r[1] + r[3]) * self.context.scale)
+                c.line_to((r[0] + r[2]) * self.context.scale, (r[1] + r[3]) * self.context.scale)
+                c.stroke()
 
         #  Draw Annotation Selection (Active)
         if self.selected_annotation:
