@@ -3,7 +3,7 @@ gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
 from gi.repository import Gtk, Adw, Gio, Gdk
 
-from pdf_app.window import MainWindow
+from pdf_app.window_manager import WindowManager
 
 class PDFApplication(Adw.Application):
     def __init__(self, application_id='com.inlinea.app', flags=Gio.ApplicationFlags.HANDLES_OPEN):
@@ -12,15 +12,17 @@ class PDFApplication(Adw.Application):
     def do_activate(self):
         self.load_css()
         
-        win = self.props.active_window
+        wm = WindowManager.get()
+        win = wm.get_active_window()
         if not win:
-            win = MainWindow(application=self)
+            win = wm.create_window(self)
             
         win.present()
 
     def do_open(self, files, n_files, hint):
         self.do_activate()
-        win = self.props.active_window
+        wm = WindowManager.get()
+        win = wm.get_active_window()
         if win:
             for gfile in files:
                 win.open_pdf_tab(gfile)
