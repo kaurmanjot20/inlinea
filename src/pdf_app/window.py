@@ -6,15 +6,23 @@ from gi.repository import Gtk, Adw, Gio, GLib
 from pdf_app.ui.pdf_view import PDFView
 from pdf_app.ui.empty_view import EmptyView
 from pdf_app.ui.thumbnail_sidebar import ThumbnailSidebar
+from pdf_app.window_manager import WindowManager
 
-class MainWindow(Adw.ApplicationWindow):
-    def __init__(self, *args, **kwargs):
+class InlineaWindow(Adw.ApplicationWindow):
+    def __init__(self, *args, add_initial_tab=True, **kwargs):
         super().__init__(*args, **kwargs)
         
         self.set_title("Inlinea")
         self.set_default_size(1200, 800)
         
         self.connect("close-request", self.on_close_request)
+
+        # Register with WindowManager for multi-window tracking
+        wm = WindowManager.get()
+        wm.register(self)
+        
+        # Track focus changes to update active window
+        self.connect("notify::is-active", self._on_focus_changed)
 
         self.toast_overlay = Adw.ToastOverlay()
         self.set_content(self.toast_overlay)
@@ -89,12 +97,19 @@ class MainWindow(Adw.ApplicationWindow):
         self.tab_view = Adw.TabView()
         self.tab_view.connect('notify::selected-page', self.on_tab_changed)
         self.tab_view.connect("close-page", self.on_close_page)
+        
+        # Multi-window signals: detach, transfer, and auto-close
+        self.tab_view.connect("create-window", self._on_create_window)
+        self.tab_view.connect("page-attached", self._on_page_attached)
+        self.tab_view.connect("page-detached", self._on_page_detached)
+        
         self.tab_bar.set_view(self.tab_view)
 
         self.split_view.set_content(self.tab_view)
 
         self.setup_actions()
-        self.add_empty_tab()
+        if add_initial_tab:
+            self.add_empty_tab()
 
     def setup_actions(self):
         action_open = Gio.SimpleAction.new("open_document", None)
@@ -750,10 +765,83 @@ class MainWindow(Adw.ApplicationWindow):
                 dirty_pages.append(page_wrapper)
         
         if not dirty_pages:
+            WindowManager.get().unregister(self)
             return False 
         
         self.prompt_save_changes(dirty_pages, close_app=True)
         return True 
+
+    # ========== MULTI-WINDOW SUPPORT ==========
+
+    def _on_focus_changed(self, window, pspec):
+        """Update WindowManager when this window gains focus."""
+        if self.is_active():
+            WindowManager.get().set_active(self)
+
+    def _on_create_window(self, tab_view):
+        """Handle tab detach: create a new window and return its TabView.
+        
+        Called by Adw.TabView when a tab is dragged out of the window.
+        The returned TabView receives the transferred tab.
+        """
+        app = self.get_application()
+        wm = WindowManager.get()
+        new_window = wm.create_window(app, add_initial_tab=False)
+        new_window.present()
+        return new_window.tab_view
+
+    def _on_page_attached(self, tab_view, page, position):
+        """Rebind callbacks when a tab is transferred into this window.
+        
+        When a tab is dragged from another window, its PDFView's callbacks
+        (on_dirty_changed, document-loaded) still point to the old window.
+        We rebind them here.
+        """
+        view = page.get_child()
+        if isinstance(view, PDFView):
+            # Rebind dirty-change callback to update THIS window's tab title
+            def on_dirty_changed(is_dirty):
+                self.update_tab_status(page, is_dirty)
+            view.store.on_dirty_changed = on_dirty_changed
+            
+            # Reconnect document-loaded signal to this window
+            # First disconnect any existing handler from the old window
+            try:
+                view.disconnect_by_func(self.on_pdf_document_loaded)
+            except TypeError:
+                pass  # Not connected to this window yet — that's expected
+            
+            # Connect to this window
+            view.connect('document-loaded', self.on_pdf_document_loaded)
+            
+            # Remove empty tabs since we now have a real document tab
+            self._remove_empty_tabs()
+
+    def _on_page_detached(self, tab_view, page, position):
+        """Handle tab removal: auto-close window if empty.
+        
+        When the last tab is detached/closed from a secondary window,
+        close the window. If this is the last window, show EmptyView instead.
+        """
+        if tab_view.get_n_pages() == 0:
+            wm = WindowManager.get()
+            if len(wm.windows) > 1:
+                # Secondary window — auto-close
+                wm.unregister(self)
+                self.close()
+            else:
+                # Last window — show empty tab instead of closing
+                self.add_empty_tab()
+
+    def _remove_empty_tabs(self):
+        """Remove any EmptyView tabs (used after a real tab is attached)."""
+        to_remove = []
+        for i in range(self.tab_view.get_n_pages()):
+            page = self.tab_view.get_nth_page(i)
+            if isinstance(page.get_child(), EmptyView):
+                to_remove.append(page)
+        for page in to_remove:
+            self.tab_view.close_page_finish(page, True)
 
  
 
@@ -813,6 +901,7 @@ class MainWindow(Adw.ApplicationWindow):
                 if close_app:
                     try: self.disconnect_by_func(self.on_close_request)
                     except: pass
+                    WindowManager.get().unregister(self)
                     self.close()
                 else:
                     page = dirty_pages[0] 
@@ -832,6 +921,7 @@ class MainWindow(Adw.ApplicationWindow):
                 if close_app:
                     try: self.disconnect_by_func(self.on_close_request)
                     except Exception: pass
+                    WindowManager.get().unregister(self)
                     self.close()
                 else:
                     page = dirty_pages[0]
