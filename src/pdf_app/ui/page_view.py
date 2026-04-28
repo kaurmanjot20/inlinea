@@ -8,7 +8,7 @@ from pdf_app.document.store import Annotation, AnnotationStore
 from pdf_app.ui.text_dialog import TextAnnotationDialog
 
 from pdf_app.ui.pdf_drawing_area import PDFDrawingArea
-from pdf_app.ui.text_editor import TextEditorPopover
+from pdf_app.ui.text_toolbar import TextFormattingToolbar
 
 class PDFPageView(Gtk.Overlay):
 
@@ -48,7 +48,7 @@ class PDFPageView(Gtk.Overlay):
 
         self.setup_popover()
         self.color_popover = None
-        self.editor_popover = None
+        self.text_toolbar = None
         
         key_controller = Gtk.EventControllerKey()
         key_controller.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
@@ -87,15 +87,29 @@ class PDFPageView(Gtk.Overlay):
         self.store.is_dirty = True
 
     def open_text_editor(self, ann):
-        if self.editor_popover:
-            self.editor_popover.popdown()
-            self.editor_popover.unparent()
-            self.editor_popover = None
+        # Enter in-place editing mode
+        self.drawing_area.set_editing_mode(True)
+        self.show_text_toolbar(ann)
+
+    def show_text_toolbar(self, ann):
+        if self.text_toolbar:
+            self.text_toolbar.popdown()
+            self.text_toolbar.unparent()
+            self.text_toolbar = None
             
-        self.editor_popover = TextEditorPopover(self, ann, self.on_text_updated)
-        self.editor_popover.update_position(self.scale)
-        self.editor_popover.popup()
-        
+        if not ann or ann.type != 'text':
+            return
+            
+        self.text_toolbar = TextFormattingToolbar(self, ann, self.store, self.on_text_updated)
+        self.text_toolbar.update_position(self.scale)
+        self.text_toolbar.popup()
+
+    def hide_text_toolbar(self):
+        if self.text_toolbar:
+            self.text_toolbar.popdown()
+            self.text_toolbar.unparent()
+            self.text_toolbar = None
+
     def on_text_updated(self, ann):
         self.drawing_area.queue_draw()
         self.store.is_dirty = True
@@ -111,14 +125,21 @@ class PDFPageView(Gtk.Overlay):
                 
             if self.drawing_area.selected_annotation:
                 self.drawing_area.selected_annotation = None
+                self.drawing_area.set_editing_mode(False)
+                self.hide_text_toolbar()
                 self.drawing_area.queue_draw()
                 return True
                 
         if keyval == Gdk.KEY_Delete or keyval == Gdk.KEY_BackSpace:
+            # Don't delete annotation if we're currently typing inside it
+            if self.drawing_area.editing_mode:
+                return False
+                
             if self.drawing_area.selected_annotation:
                 ann = self.drawing_area.selected_annotation
                 self.store.remove(ann.id)
                 self.drawing_area.selected_annotation = None
+                self.hide_text_toolbar()
                 self.drawing_area.queue_draw()
                 return True
                 
@@ -153,6 +174,7 @@ class PDFPageView(Gtk.Overlay):
         handled = self.drawing_area.handle_drag_begin(start_x, start_y)
         if handled:
             gesture.set_state(Gtk.EventSequenceState.CLAIMED)
+            self.hide_text_toolbar()
         else:
             gesture.set_state(Gtk.EventSequenceState.DENIED)
 
@@ -187,11 +209,23 @@ class PDFPageView(Gtk.Overlay):
         if hit_ann:
             self.drawing_area.selected_annotation = hit_ann
             self.drawing_area.selected_region = None
+            if hit_ann.type == 'text':
+                self.show_text_toolbar(hit_ann)
+                # If clicking a text annotation, we don't automatically enter edit mode 
+                # (double-click does that). If we were already in edit mode on another 
+                # annotation, we exit it.
+                if self.drawing_area.editing_mode and hit_ann != self.drawing_area.selected_annotation:
+                    self.drawing_area.set_editing_mode(False)
+            else:
+                self.hide_text_toolbar()
+                self.drawing_area.set_editing_mode(False)
             self.drawing_area.queue_draw()
             self.drawing_area.grab_focus()
         else:
             if self.drawing_area.selected_annotation and not self.drawing_area.is_point_on_handle(x, y):
                  self.drawing_area.selected_annotation = None
+                 self.hide_text_toolbar()
+                 self.drawing_area.set_editing_mode(False)
                  self.drawing_area.queue_draw()
             self.drawing_area.grab_focus()
 
@@ -200,6 +234,11 @@ class PDFPageView(Gtk.Overlay):
 
     def on_resize_drag_end(self, gesture, offset_x, offset_y):
         self.drawing_area.handle_drag_end(offset_x, offset_y)
+        self.store.is_dirty = True
+        
+        ann = self.drawing_area.selected_annotation
+        if ann and ann.type == 'text':
+             self.show_text_toolbar(ann)
 
     def on_click_pressed(self, gesture, n_press, x, y):
         # Clear selections on other pages
@@ -224,7 +263,7 @@ class PDFPageView(Gtk.Overlay):
         rects = [(pdf_x, pdf_y, 150, 40)]
         
         ann = Annotation.create(type='text', page_index=self.page_number, rects=rects, color=(0,0,0,1))
-        ann.content = "Type here..."
+        ann.content = ""
         ann.style = "standard"
         
         self.store.add(ann)
@@ -467,7 +506,7 @@ class PDFPageView(Gtk.Overlay):
         rects = [(pdf_x, pdf_y, 100, 20)] 
         
         ann = Annotation.create(type='text', page_index=self.page_number, rects=rects)
-        ann.content = "Text"
+        ann.content = ""
         ann.style = "standard"
         
         self.store.add(ann)
@@ -487,7 +526,7 @@ class PDFPageView(Gtk.Overlay):
         rects = [(pdf_x, pdf_y, 100, 20)] 
         
         ann = Annotation.create(type='text', page_index=self.page_number, rects=rects)
-        ann.content = "New Text"
+        ann.content = ""
         ann.style = "standard"
         
         self.store.add(ann)

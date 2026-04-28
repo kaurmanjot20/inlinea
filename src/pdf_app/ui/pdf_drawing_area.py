@@ -37,6 +37,12 @@ class PDFDrawingArea(Gtk.DrawingArea):
         self.handle_radius = 12  
         self._old_rects = None  # Store original rects for undo
         
+        # Text Editing State
+        self.editing_mode = False
+        self.cursor_position = 0
+        self.caret_visible = True
+        self._caret_timer = 0
+        
         self.pdf_links = []
         self.hovered_link = None
         
@@ -47,6 +53,17 @@ class PDFDrawingArea(Gtk.DrawingArea):
         motion.connect("motion", self._on_motion)
         motion.connect("leave", self._on_leave)
         self.add_controller(motion)
+
+        # Key controller for text input
+        self.key_ctrl = Gtk.EventControllerKey()
+        self.key_ctrl.connect("key-pressed", self.on_key_pressed)
+        self.add_controller(self.key_ctrl)
+        
+        # IM Context for text input (handles Unicode etc.)
+        self.im_context = Gtk.IMContextSimple()
+        self.im_context.set_client_widget(self)
+        self.im_context.connect("commit", self.on_im_commit)
+        self.key_ctrl.set_im_context(self.im_context)
         
         self.queue_draw()
         
@@ -106,7 +123,14 @@ class PDFDrawingArea(Gtk.DrawingArea):
             return None, None
             
         if ann.type == 'text':
-            return None, None
+            if not ann.rects: return None, None
+            r = ann.rects[0]
+            x, y, w, h = r
+            start_x = x * self.context.scale
+            start_y = y * self.context.scale
+            end_x = (x + w) * self.context.scale
+            end_y = (y + h) * self.context.scale
+            return (start_x, start_y), (end_x, end_y)
             
         if ann.type == 'square':
             if not ann.rects: return None, None
@@ -242,6 +266,46 @@ class PDFDrawingArea(Gtk.DrawingArea):
                          self.set_cursor(cursor)
                          return True
             
+            if ann.type == 'text':
+                 # Same handles as square
+                 r = ann.rects[0]
+                 x = r[0] * self.context.scale
+                 y = r[1] * self.context.scale
+                 w = r[2] * self.context.scale
+                 h = r[3] * self.context.scale
+                 
+                 handles = [
+                     ('nw', x, y), ('ne', x + w, y),
+                     ('sw', x, y + h), ('se', x + w, y + h),
+                     ('n', x + w/2, y), ('s', x + w/2, y + h),
+                     ('w', x, y + h/2), ('e', x + w, y + h/2)
+                 ]
+                 
+                 for name, hx, hy in handles:
+                     dist = ((start_x - hx)**2 + (start_y - hy)**2)**0.5
+                     if dist < threshold:
+                         self._resizing_handle = name
+                         self._resize_start_pos = (start_x, start_y)
+                         self._old_rects = list(ann.rects)
+                         # Anchor mapping
+                         if name == 'nw': self._anchor_pdf = (r[0]+r[2], r[1]+r[3])
+                         elif name == 'ne': self._anchor_pdf = (r[0], r[1]+r[3])
+                         elif name == 'sw': self._anchor_pdf = (r[0]+r[2], r[1])
+                         elif name == 'se': self._anchor_pdf = (r[0], r[1])
+                         elif name == 'n': self._anchor_pdf = (0, r[1]+r[3])
+                         elif name == 's': self._anchor_pdf = (0, r[1])
+                         elif name == 'w': self._anchor_pdf = (r[0]+r[2], 0)
+                         elif name == 'e': self._anchor_pdf = (r[0], 0)
+                         
+                         cursor_name = f"{name}-resize"
+                         # n, s, e, w needs mapping
+                         if name in ['n', 's']: cursor_name = 'ns-resize'
+                         elif name in ['e', 'w']: cursor_name = 'ew-resize'
+                         
+                         cursor = Gdk.Cursor.new_from_name(cursor_name, None)
+                         self.set_cursor(cursor)
+                         return True
+            
         # Check for MOVE (drag body)
         pdf_x = start_x / self.context.scale
         pdf_y = start_y / self.context.scale
@@ -288,13 +352,39 @@ class PDFDrawingArea(Gtk.DrawingArea):
             self.queue_draw()
             return
 
-        # HANDLE SQUARE RESIZE
-        if self.selected_annotation.type == 'square':
+        # HANDLE SQUARE OR TEXT RESIZE
+        if self.selected_annotation.type in ('square', 'text'):
+             r = self._old_rects[0]
              anchor_x, anchor_y = self._anchor_pdf
-             new_x = min(anchor_x, pdf_x)
-             new_y = min(anchor_y, pdf_y)
-             new_w = abs(anchor_x - pdf_x)
-             new_h = abs(anchor_y - pdf_y)
+             
+             if self._resizing_handle in ('nw', 'ne', 'sw', 'se'):
+                 new_x = min(anchor_x, pdf_x)
+                 new_y = min(anchor_y, pdf_y)
+                 new_w = abs(anchor_x - pdf_x)
+                 new_h = abs(anchor_y - pdf_y)
+             elif self._resizing_handle in ('n', 's'):
+                 new_x = r[0]
+                 new_w = r[2]
+                 new_y = min(anchor_y, pdf_y)
+                 new_h = abs(anchor_y - pdf_y)
+             elif self._resizing_handle in ('e', 'w'):
+                 new_y = r[1]
+                 new_h = r[3]
+                 new_x = min(anchor_x, pdf_x)
+                 new_w = abs(anchor_x - pdf_x)
+             else:
+                 new_x, new_y, new_w, new_h = r
+                 
+             # Enforce minimum size for text
+             if self.selected_annotation.type == 'text':
+                 if new_w < 20: new_w = 20
+                 if new_h < 10: new_h = 10
+                 # Recompute x/y if clamped and dragging left/top
+                 if self._resizing_handle in ('nw', 'sw', 'w') and new_w == 20:
+                     new_x = anchor_x - 20
+                 if self._resizing_handle in ('nw', 'ne', 'n') and new_h == 10:
+                     new_y = anchor_y - 10
+                     
              self.selected_annotation.rects = [(new_x, new_y, new_w, new_h)]
              self.queue_draw()
              return
@@ -514,28 +604,192 @@ class PDFDrawingArea(Gtk.DrawingArea):
         layout = PangoCairo.create_layout(c)
         layout.set_text(ann.content, -1)
         
-        font_desc = Pango.FontDescription("Sans 12")
+        # Configure layout
+        layout.set_width(int(w * Pango.SCALE))
+        layout.set_wrap(Pango.WrapMode.WORD_CHAR)
+        
+        # Build Font Description
+        font_desc_str = ann.font_family
+        if ann.bold: font_desc_str += " Bold"
+        if ann.italic: font_desc_str += " Italic"
+        font_desc_str += f" {ann.font_size}"
+        
+        font_desc = Pango.FontDescription(font_desc_str)
         layout.set_font_description(font_desc)
         
         # Position
         c.move_to(x, y)
         
-        # Draw
+        # Set text color
+        if ann.color:
+            r, g, b, a = ann.color
+            c.set_source_rgba(r, g, b, a)
+        else:
+            c.set_source_rgba(0, 0, 0, 1)
+        
+        # Draw Text
         PangoCairo.show_layout(c, layout)
         
-       
-        _ink, logical = layout.get_extents()
+        # Underline (Manual since Pango underline can be tricky with scaling)
+        if ann.underline:
+            _ink, logical = layout.get_extents()
+            text_h = logical.height / Pango.SCALE
+            lines = layout.get_lines()
+            line_y = y
+            for line in lines:
+                ext = line.get_extents()[1]
+                lw = ext.width / Pango.SCALE
+                lh = ext.height / Pango.SCALE
+                c.set_line_width(ann.font_size / 15.0)
+                c.move_to(x, line_y + lh * 0.9) # Slightly below baseline
+                c.line_to(x + lw, line_y + lh * 0.9)
+                c.stroke()
+                line_y += lh
         
+        # Draw Caret if in editing mode and selected
+        if self.editing_mode and self.selected_annotation == ann and self.caret_visible:
+            self.cursor_position = max(0, min(self.cursor_position, len(ann.content)))
+            byte_index = len(ann.content[:self.cursor_position].encode('utf-8'))
+            strong_pos, weak_pos = layout.get_cursor_pos(byte_index)
+            cx = x + strong_pos.x / Pango.SCALE
+            cy = y + strong_pos.y / Pango.SCALE
+            ch = strong_pos.height / Pango.SCALE
+            
+            c.set_source_rgba(0, 0, 0, 1)
+            c.set_line_width(1.5 / self.context.scale)
+            c.move_to(cx, cy)
+            c.line_to(cx, cy + ch)
+            c.stroke()
+        
+        _ink, logical = layout.get_extents()
         pixel_w = logical.width / Pango.SCALE
         pixel_h = logical.height / Pango.SCALE
         
-        current_w = w
-        current_h = h
-        
-        
-        if abs(pixel_w - current_w) > 1.0 or abs(pixel_h - current_h) > 1.0:
+        # Smart resize: tightly snap the height to the text height.
+        if getattr(ann, '_auto_shrink', False):
+            new_w = pixel_w
+            ann._auto_shrink = False
+        elif self._resizing_handle:
+            new_w = w
+        else:
+            new_w = max(w, pixel_w) if ann.content else w
+            
+        ann.rects[0] = (x, y, new_w, pixel_h)
 
-            ann.rects[0] = (x, y, pixel_w, pixel_h)
+    def set_editing_mode(self, enabled):
+        if self.editing_mode == enabled:
+            return
+            
+        self.editing_mode = enabled
+        if enabled:
+            if self.selected_annotation and self.selected_annotation.type == 'text':
+                self.cursor_position = len(self.selected_annotation.content)
+            self.caret_visible = True
+            from gi.repository import GLib
+            if self._caret_timer:
+                GLib.source_remove(self._caret_timer)
+            self._caret_timer = GLib.timeout_add(500, self._toggle_caret)
+            self.im_context.focus_in()
+            self.grab_focus()
+            self.queue_draw()
+        else:
+            if self._caret_timer:
+                from gi.repository import GLib
+                GLib.source_remove(self._caret_timer)
+                self._caret_timer = 0
+            self.caret_visible = False
+            self.im_context.focus_out()
+            self.queue_draw()
+            
+    def _toggle_caret(self):
+        self.caret_visible = not self.caret_visible
+        self.queue_draw()
+        return True
+
+    def on_im_commit(self, im_context, text):
+        if not self.editing_mode or not self.selected_annotation: return
+        ann = self.selected_annotation
+        if ann.type != 'text': return
+        
+        # Record undo
+        self.store.record_text_change(ann.id, ann.content)
+        
+        # Insert text
+        left = ann.content[:self.cursor_position]
+        right = ann.content[self.cursor_position:]
+        ann.content = left + text + right
+        self.cursor_position += len(text)
+        self.queue_draw()
+
+    def on_key_pressed(self, controller, keyval, keycode, state):
+        if not self.editing_mode or not self.selected_annotation:
+            return False
+            
+        ann = self.selected_annotation
+        if ann.type != 'text': return False
+        
+        if keyval == Gdk.KEY_Escape:
+            self.set_editing_mode(False)
+            return True
+            
+        if keyval == Gdk.KEY_BackSpace:
+            if self.cursor_position > 0:
+                ann._auto_shrink = True
+                self.store.record_text_change(ann.id, ann.content)
+                left = ann.content[:self.cursor_position - 1]
+                right = ann.content[self.cursor_position:]
+                ann.content = left + right
+                self.cursor_position -= 1
+                self.queue_draw()
+            return True
+            
+        if keyval == Gdk.KEY_Delete:
+            if self.cursor_position < len(ann.content):
+                ann._auto_shrink = True
+                self.store.record_text_change(ann.id, ann.content)
+                left = ann.content[:self.cursor_position]
+                right = ann.content[self.cursor_position + 1:]
+                ann.content = left + right
+                self.queue_draw()
+            return True
+            
+        if keyval == Gdk.KEY_Left:
+            if self.cursor_position > 0:
+                self.cursor_position -= 1
+                self.caret_visible = True
+                self.queue_draw()
+            return True
+            
+        if keyval == Gdk.KEY_Right:
+            if self.cursor_position < len(ann.content):
+                self.cursor_position += 1
+                self.caret_visible = True
+                self.queue_draw()
+            return True
+            
+        if keyval == Gdk.KEY_Return or keyval == Gdk.KEY_KP_Enter:
+            ann._auto_shrink = True
+            self.store.record_text_change(ann.id, ann.content)
+            left = ann.content[:self.cursor_position]
+            right = ann.content[self.cursor_position:]
+            ann.content = left + "\n" + right
+            self.cursor_position += 1
+            self.queue_draw()
+            return True
+            
+        # Fallback for printable characters if IMContext didn't consume it
+        char = Gdk.keyval_to_unicode(keyval)
+        if char >= 32 and char != 127:
+            text = chr(char)
+            self.store.record_text_change(ann.id, ann.content)
+            left = ann.content[:self.cursor_position]
+            right = ann.content[self.cursor_position:]
+            ann.content = left + text + right
+            self.cursor_position += 1
+            self.queue_draw()
+            return True
+            
+        return False
 
     def draw_annotation_selection(self, c, ann):
         # Draw Start and End Handles for the annotation
@@ -543,23 +797,41 @@ class PDFDrawingArea(Gtk.DrawingArea):
             return
 
         if ann.type == 'text':
-            # Draw Bounding Box only
-            c.save()
-            c.set_line_width(1.0)
-            c.set_dash([4.0, 4.0], 0) # Dashed line
-            c.set_source_rgba(0.2, 0.6, 1.0, 0.8) # Blue
-            
-            for r in ann.rects:
-                x, y, w, h = r
-                # Convert to widget coords
-                wx = x * self.context.scale
-                wy = y * self.context.scale
-                ww = w * self.context.scale
-                wh = h * self.context.scale
-                c.rectangle(wx, wy, ww, wh)
-                c.stroke()
-            c.restore()
-            return
+             if not ann.rects: return
+             r = ann.rects[0]
+             x = r[0] * self.context.scale
+             y = r[1] * self.context.scale
+             w = r[2] * self.context.scale
+             h = r[3] * self.context.scale
+             
+             # Draw Box
+             c.set_line_width(1)
+             if self.editing_mode:
+                 c.set_source_rgba(0.2, 0.6, 1.0, 0.8) # Solid blue when editing
+             else:
+                 c.set_dash([4.0, 4.0], 0) # Dashed line
+                 c.set_source_rgba(0.2, 0.6, 1.0, 0.8)
+             c.rectangle(x, y, w, h)
+             c.stroke()
+             c.set_dash([], 0) # Reset dash
+             
+             # Draw 8 handles
+             c.set_source_rgba(1, 1, 1, 1) # White fill
+             handle_r = 4
+             
+             handles_pos = [
+                 (x, y), (x + w, y), (x, y + h), (x + w, y + h), # Corners
+                 (x + w/2, y), (x + w/2, y + h), (x, y + h/2), (x + w, y + h/2) # Edges
+             ]
+             
+             for hx, hy in handles_pos:
+                 c.rectangle(hx - handle_r, hy - handle_r, handle_r*2, handle_r*2)
+                 c.fill_preserve()
+                 c.set_source_rgba(0.2, 0.6, 1.0, 1.0) # Blue border
+                 c.stroke()
+                 c.set_source_rgba(1, 1, 1, 1) # Reset fill color for next
+             
+             return
 
         if ann.type == 'square':
              if not ann.rects: return

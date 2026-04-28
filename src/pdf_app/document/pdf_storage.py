@@ -1,6 +1,7 @@
 
 import fitz  # PyMuPDF
 from typing import List, Tuple
+import json
 from pdf_app.document.store import Annotation
 
 APP_CREATOR = "Inlinea"
@@ -94,8 +95,27 @@ def load_annotations_from_pdf(file_path: str) -> List[Annotation]:
                 rects = [_rect_to_xywh(annot.rect)]
 
             content = ""
+            font_size = 14
+            font_family = "Sans"
+            bold = False
+            italic = False
+            underline = False
+            
             if annot_type == "text":
                 content = annot.info.get("content", "") or annot.get_text() or ""
+                subject = annot.info.get("subject", "")
+                try:
+                    if subject.startswith("{"):
+                        meta = json.loads(subject)
+                        font_size = meta.get("font_size", 14)
+                        font_family = meta.get("font_family", "Sans")
+                        bold = meta.get("bold", False)
+                        italic = meta.get("italic", False)
+                        underline = meta.get("underline", False)
+                        if "color" in meta:
+                            color = tuple(meta["color"])
+                except Exception:
+                    pass
 
             ann = Annotation.create(
                 type=annot_type,
@@ -104,6 +124,12 @@ def load_annotations_from_pdf(file_path: str) -> List[Annotation]:
                 color=color,
                 content=content,
             )
+            if annot_type == "text":
+                ann.font_size = font_size
+                ann.font_family = font_family
+                ann.bold = bold
+                ann.italic = italic
+                ann.underline = underline
 
             annotations.append(ann)
 
@@ -191,13 +217,22 @@ def _add_freetext_annot(page, ann: Annotation, rgb: tuple):
     annot = page.add_freetext_annot(
         rect,
         text,
-        fontsize=12,
-        fontname="helv",
+        fontsize=ann.font_size,
+        fontname="helv", # PyMuPDF expects base 14 fonts here, better to leave helv and use JSON metadata for app rendering
         text_color=rgb,
         fill_color=None,
     )
 
-    annot.set_info(title=APP_CREATOR)
+    meta = {
+        "font_size": ann.font_size,
+        "font_family": ann.font_family,
+        "bold": ann.bold,
+        "italic": ann.italic,
+        "underline": ann.underline,
+        "color": list(ann.color)
+    }
+
+    annot.set_info(title=APP_CREATOR, subject=json.dumps(meta))
     annot.update()
 
 

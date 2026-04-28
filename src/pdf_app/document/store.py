@@ -13,6 +13,13 @@ class Annotation:
     content: str = ""
     style: str = "standard"
     created_at: str = ""
+    
+    # Text-specific properties
+    font_size: int = 14
+    font_family: str = "Sans"
+    bold: bool = False
+    italic: bool = False
+    underline: bool = False
 
     @classmethod
     def create(cls, type: str, page_index: int, rects: List[Tuple[float, float, float, float]],
@@ -35,6 +42,23 @@ class Annotation:
             color=color,
             content=content,
         )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "type": self.type,
+            "page_index": self.page_index,
+            "rects": self.rects,
+            "color": self.color,
+            "content": self.content,
+            "style": self.style,
+            "created_at": self.created_at,
+            "font_size": self.font_size,
+            "font_family": self.font_family,
+            "bold": self.bold,
+            "italic": self.italic,
+            "underline": self.underline
+        }
 
 
 class AnnotationStore:
@@ -116,6 +140,16 @@ class AnnotationStore:
         self._redo_stack.clear()
         self.is_dirty = True
 
+    def record_text_change(self, annotation_id: str, old_content: str):
+        self._undo_stack.append(('text', annotation_id, old_content))
+        self._redo_stack.clear()
+        self.is_dirty = True
+
+    def record_style_change(self, annotation_id: str, old_styles: dict):
+        self._undo_stack.append(('style', annotation_id, old_styles))
+        self._redo_stack.clear()
+        self.is_dirty = True
+
     # ========== UNDO / REDO ==========
 
     def undo(self) -> Optional[tuple]:
@@ -155,6 +189,34 @@ class AnnotationStore:
                     self._redo_stack.append(('color', annotation_id, current_color))
                     self.is_dirty = True
                     return (op, ann)
+        elif op == 'text':
+            annotation_id, old_content = entry[1], entry[2]
+            for ann in self.annotations:
+                if ann.id == annotation_id:
+                    current_content = ann.content
+                    ann.content = old_content
+                    self._redo_stack.append(('text', annotation_id, current_content))
+                    self.is_dirty = True
+                    return (op, ann)
+        elif op == 'style':
+            annotation_id, old_styles = entry[1], entry[2]
+            for ann in self.annotations:
+                if ann.id == annotation_id:
+                    current_styles = {
+                        'font_size': ann.font_size,
+                        'font_family': ann.font_family,
+                        'bold': ann.bold,
+                        'italic': ann.italic,
+                        'underline': ann.underline
+                    }
+                    ann.font_size = old_styles.get('font_size', ann.font_size)
+                    ann.font_family = old_styles.get('font_family', ann.font_family)
+                    ann.bold = old_styles.get('bold', ann.bold)
+                    ann.italic = old_styles.get('italic', ann.italic)
+                    ann.underline = old_styles.get('underline', ann.underline)
+                    self._redo_stack.append(('style', annotation_id, current_styles))
+                    self.is_dirty = True
+                    return (op, ann)
         return None
 
     def redo(self) -> Optional[tuple]:
@@ -192,6 +254,34 @@ class AnnotationStore:
                     current_color = ann.color
                     ann.color = new_color
                     self._undo_stack.append(('color', annotation_id, current_color))
+                    self.is_dirty = True
+                    return (op, ann)
+        elif op == 'text':
+            annotation_id, new_content = entry[1], entry[2]
+            for ann in self.annotations:
+                if ann.id == annotation_id:
+                    current_content = ann.content
+                    ann.content = new_content
+                    self._undo_stack.append(('text', annotation_id, current_content))
+                    self.is_dirty = True
+                    return (op, ann)
+        elif op == 'style':
+            annotation_id, new_styles = entry[1], entry[2]
+            for ann in self.annotations:
+                if ann.id == annotation_id:
+                    current_styles = {
+                        'font_size': ann.font_size,
+                        'font_family': ann.font_family,
+                        'bold': ann.bold,
+                        'italic': ann.italic,
+                        'underline': ann.underline
+                    }
+                    ann.font_size = new_styles.get('font_size', ann.font_size)
+                    ann.font_family = new_styles.get('font_family', ann.font_family)
+                    ann.bold = new_styles.get('bold', ann.bold)
+                    ann.italic = new_styles.get('italic', ann.italic)
+                    ann.underline = new_styles.get('underline', ann.underline)
+                    self._undo_stack.append(('style', annotation_id, current_styles))
                     self.is_dirty = True
                     return (op, ann)
         return None
