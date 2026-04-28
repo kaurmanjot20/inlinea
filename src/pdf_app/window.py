@@ -7,6 +7,7 @@ from pdf_app.ui.pdf_view import PDFView
 from pdf_app.ui.empty_view import EmptyView
 from pdf_app.ui.thumbnail_sidebar import ThumbnailSidebar
 from pdf_app.window_manager import WindowManager
+from pdf_app.session_manager import SessionManager
 
 class InlineaWindow(Adw.ApplicationWindow):
     def __init__(self, *args, add_initial_tab=True, **kwargs):
@@ -72,6 +73,8 @@ class InlineaWindow(Adw.ApplicationWindow):
         self.active_tool_name = None
 
         self.tab_bar = Adw.TabBar()
+        self.tab_bar.set_autohide(False)
+        self.tab_bar.set_expand_tabs(False)
         self.toolbar_view.add_top_bar(self.tab_bar)
         
         self.split_view = Adw.OverlaySplitView()
@@ -104,6 +107,12 @@ class InlineaWindow(Adw.ApplicationWindow):
         self.tab_view.connect("page-detached", self._on_page_detached)
         
         self.tab_bar.set_view(self.tab_view)
+
+        # Tab right-click context menu
+        tab_menu = Gio.Menu()
+        tab_menu.append("Move to Other Window", "win.move_tab_to_window")
+        tab_menu.append("Merge All Tabs Here", "win.merge_window")
+        self.tab_view.set_menu_model(tab_menu)
 
         self.split_view.set_content(self.tab_view)
 
@@ -186,6 +195,17 @@ class InlineaWindow(Adw.ApplicationWindow):
         
         if app:
             app.set_accels_for_action("win.toggle_sidebar", ["<Ctrl><Alt>m"])
+
+        action_move_tab = Gio.SimpleAction.new("move_tab_to_window", None)
+        action_move_tab.connect("activate", self.on_move_tab_to_window)
+        self.add_action(action_move_tab)
+
+        action_merge = Gio.SimpleAction.new("merge_window", None)
+        action_merge.connect("activate", self.on_merge_window)
+        self.add_action(action_merge)
+
+        if app:
+            app.set_accels_for_action("win.merge_window", ["<Ctrl>m"])
 
         action_view_dual = Gio.SimpleAction.new_stateful(
             "view_dual", None, GLib.Variant.new_boolean(False)
@@ -456,6 +476,7 @@ class InlineaWindow(Adw.ApplicationWindow):
         pdf_view.connect('document-loaded', self.on_pdf_document_loaded)
         
         self.tab_view.set_selected_page(page)
+        SessionManager.get().schedule_save()
 
     def on_pdf_document_loaded(self, view):
         if not hasattr(view, 'sidebar') or not view.sidebar:
@@ -625,6 +646,7 @@ class InlineaWindow(Adw.ApplicationWindow):
         action.set_state(GLib.Variant.new_boolean(show))
 
     def on_tab_changed(self, tab_view, param):
+        SessionManager.get().schedule_save()
         page = self.tab_view.get_selected_page()
         
         if hasattr(self, 'current_view_signals') and self.current_view_signals:
@@ -765,7 +787,11 @@ class InlineaWindow(Adw.ApplicationWindow):
                 dirty_pages.append(page_wrapper)
         
         if not dirty_pages:
-            WindowManager.get().unregister(self)
+            wm = WindowManager.get()
+            # Save session BEFORE unregistering so this window's state is captured
+            if len(wm.windows) <= 1:
+                SessionManager.get().save_now(clean_exit=True)
+            wm.unregister(self)
             return False 
         
         self.prompt_save_changes(dirty_pages, close_app=True)
@@ -777,6 +803,117 @@ class InlineaWindow(Adw.ApplicationWindow):
         """Update WindowManager when this window gains focus."""
         if self.is_active():
             WindowManager.get().set_active(self)
+
+    def on_move_tab_to_window(self, action, param):
+        """Move the right-clicked tab to another window.
+        
+        If there is exactly one other window, transfers directly.
+        If there are multiple other windows, shows a chooser dialog.
+        """
+        # get_menu_page() may return None on some libadwaita versions;
+        # fall back to the currently selected page.
+        page = None
+        try:
+            page = self.tab_view.get_menu_page()
+        except AttributeError:
+            pass
+        if not page:
+            page = self.tab_view.get_selected_page()
+        if not page:
+            return
+
+        wm = WindowManager.get()
+        others = [w for w in wm.windows if w is not self]
+
+        if not others:
+            toast = Adw.Toast.new("No other window to move tab to")
+            self.toast_overlay.add_toast(toast)
+            return
+
+        if len(others) == 1:
+            # Single target — transfer directly
+            target = others[0]
+            n = target.tab_view.get_n_pages()
+            self.tab_view.transfer_page(page, target.tab_view, n)
+            target.present()
+            return
+
+        # Multiple targets — show chooser dialog
+        dialog = Adw.MessageDialog(
+            transient_for=self,
+            heading="Move Tab To…",
+            body="Choose the target window:",
+        )
+        dialog.add_response("cancel", "Cancel")
+
+        for idx, win in enumerate(others):
+            resp_id = f"win_{idx}"
+            label = self._get_window_label(win)
+            dialog.add_response(resp_id, label)
+            dialog.set_response_appearance(resp_id, Adw.ResponseAppearance.SUGGESTED)
+
+        def on_response(dlg, resp):
+            if resp.startswith("win_"):
+                win_idx = int(resp.split("_")[1])
+                if win_idx < len(others):
+                    target = others[win_idx]
+                    n = target.tab_view.get_n_pages()
+                    self.tab_view.transfer_page(page, target.tab_view, n)
+                    target.present()
+            dlg.close()
+
+        dialog.connect("response", on_response)
+        dialog.present()
+
+    @staticmethod
+    def _get_window_label(win):
+        """Build a descriptive label for a window from its tab titles."""
+        titles = []
+        for i in range(win.tab_view.get_n_pages()):
+            p = win.tab_view.get_nth_page(i)
+            t = p.get_title() or "Untitled"
+            if t.startswith("* "):
+                t = t[2:]
+            titles.append(t)
+        if not titles:
+            return "Empty Window"
+        if len(titles) <= 3:
+            return ", ".join(titles)
+        return f"{titles[0]}, {titles[1]} + {len(titles) - 2} more"
+
+    def on_merge_window(self, action, param):
+        """Merge all tabs from other windows into this window.
+        
+        Pulls every tab from every other open window into this one.
+        Empty source windows auto-close via _on_page_detached.
+        Also works via Ctrl+M.
+        """
+        wm = WindowManager.get()
+        other_windows = [w for w in wm.windows if w is not self]
+
+        if not other_windows:
+            toast = Adw.Toast.new("No other windows to merge")
+            self.toast_overlay.add_toast(toast)
+            return
+
+        merged_count = 0
+        for other_win in other_windows:
+            # Collect pages first (list mutates during transfer)
+            pages = []
+            for i in range(other_win.tab_view.get_n_pages()):
+                page = other_win.tab_view.get_nth_page(i)
+                view = page.get_child()
+                if isinstance(view, PDFView):
+                    pages.append(page)
+
+            for page in pages:
+                n = self.tab_view.get_n_pages()
+                other_win.tab_view.transfer_page(page, self.tab_view, n)
+                merged_count += 1
+
+        if merged_count:
+            toast = Adw.Toast.new(f"Merged {merged_count} tab{'s' if merged_count != 1 else ''}")
+            self.toast_overlay.add_toast(toast)
 
     def _on_create_window(self, tab_view):
         """Handle tab detach: create a new window and return its TabView.
@@ -814,6 +951,8 @@ class InlineaWindow(Adw.ApplicationWindow):
             # Connect to this window
             view.connect('document-loaded', self.on_pdf_document_loaded)
             
+            SessionManager.get().schedule_save()
+            
             # Remove empty tabs since we now have a real document tab
             self._remove_empty_tabs()
 
@@ -822,28 +961,165 @@ class InlineaWindow(Adw.ApplicationWindow):
         
         When the last tab is detached/closed from a secondary window,
         close the window. If this is the last window, show EmptyView instead.
+        Auto-close is deferred so in-flight DnD transfers complete first.
         """
+        SessionManager.get().schedule_save()
         if tab_view.get_n_pages() == 0:
             wm = WindowManager.get()
             if len(wm.windows) > 1:
-                # Secondary window — auto-close
-                wm.unregister(self)
-                self.close()
+                # Secondary window — defer close so DnD transfer can finish
+                GLib.idle_add(self._auto_close_if_empty)
             else:
                 # Last window — show empty tab instead of closing
                 self.add_empty_tab()
 
+    def _auto_close_if_empty(self):
+        """Close this window if it's still empty and not the last one."""
+        if self.tab_view.get_n_pages() == 0:
+            wm = WindowManager.get()
+            if len(wm.windows) > 1:
+                wm.unregister(self)
+                self.close()
+        return False
+
     def _remove_empty_tabs(self):
-        """Remove any EmptyView tabs (used after a real tab is attached)."""
-        to_remove = []
+        """Remove any EmptyView tabs (used after a real tab is attached).
+        
+        Deferred via GLib.idle_add to avoid re-entrant issues when called
+        from within page-attached signal handlers.
+        """
+        def _do_remove():
+            to_remove = []
+            for i in range(self.tab_view.get_n_pages()):
+                page = self.tab_view.get_nth_page(i)
+                if isinstance(page.get_child(), EmptyView):
+                    to_remove.append(page)
+            for page in to_remove:
+                self.tab_view.close_page(page)
+            return False
+        GLib.idle_add(_do_remove)
+
+    # ========== SESSION STATE ==========
+
+    def get_session_state(self):
+        """Return serializable session state for this window."""
+        tabs = []
+        active_idx = 0
+        selected = self.tab_view.get_selected_page()
+
         for i in range(self.tab_view.get_n_pages()):
             page = self.tab_view.get_nth_page(i)
-            if isinstance(page.get_child(), EmptyView):
-                to_remove.append(page)
-        for page in to_remove:
-            self.tab_view.close_page_finish(page, True)
+            view = page.get_child()
 
- 
+            if page == selected:
+                active_idx = len(tabs)  # index into the *tabs* list we're building
+
+            if isinstance(view, PDFView) and hasattr(view, 'file') and view.file:
+                tabs.append({
+                    "file_path": view.file.get_path(),
+                    "page_index": view.current_page_index,
+                    "scroll_offset": view.vadjustment.get_value(),
+                    "zoom": view.scale,
+                    "is_dual_mode": view.is_dual_mode,
+                    "is_continuous": view.is_continuous,
+                })
+
+        return {
+            "tabs": tabs,
+            "active_tab_index": active_idx,
+            "sidebar_visible": self.split_view.get_show_sidebar(),
+        }
+
+    def restore_session_tabs(self, window_data, toast_overlay=None):
+        """Open PDFs from session data and restore viewport state.
+
+        Args:
+            window_data: Dict with 'tabs', 'active_tab_index', 'sidebar_visible'.
+            toast_overlay: Optional Adw.ToastOverlay to show missing-file toasts.
+        """
+        import os
+
+        missing_files = []
+        restored_pages = []  # (TabPage, tab_data) pairs for deferred restore
+
+        for tab_data in window_data.get("tabs", []):
+            file_path = tab_data.get("file_path")
+            if not file_path or not os.path.exists(file_path):
+                if file_path:
+                    missing_files.append(os.path.basename(file_path))
+                continue
+
+            gfile = Gio.File.new_for_path(file_path)
+            self.open_pdf_tab(gfile)
+
+            # The tab we just opened is the last one
+            page = self.tab_view.get_nth_page(self.tab_view.get_n_pages() - 1)
+            restored_pages.append((page, tab_data))
+
+        # Restore active tab
+        active_idx = window_data.get("active_tab_index", 0)
+        if restored_pages and 0 <= active_idx < len(restored_pages):
+            self.tab_view.set_selected_page(restored_pages[active_idx][0])
+
+        # Restore sidebar visibility
+        sidebar_visible = window_data.get("sidebar_visible", False)
+        self.split_view.set_show_sidebar(sidebar_visible)
+        self.action_toggle_sidebar.set_state(
+            GLib.Variant.new_boolean(sidebar_visible)
+        )
+
+        # Defer zoom/scroll restoration until each document finishes loading
+        for page, tab_data in restored_pages:
+            view = page.get_child()
+            if isinstance(view, PDFView):
+                self._defer_viewport_restore(view, tab_data)
+
+        # Toast for missing files
+        overlay = toast_overlay or self.toast_overlay
+        if missing_files and overlay:
+            names = ", ".join(missing_files)
+            toast = Adw.Toast.new(f"Could not find: {names}")
+            toast.set_timeout(5)
+            overlay.add_toast(toast)
+
+    def _defer_viewport_restore(self, view, tab_data):
+        """Wait for document-loaded, then restore zoom/scroll/mode."""
+        def on_loaded(v):
+            # Restore dual/continuous mode
+            is_dual = tab_data.get("is_dual_mode", False)
+            is_cont = tab_data.get("is_continuous", True)
+            if is_dual != v.is_dual_mode:
+                v.set_dual_page_mode(is_dual)
+            if is_cont != v.is_continuous:
+                v.set_continuous_scroll(is_cont)
+
+            # Restore zoom
+            saved_zoom = tab_data.get("zoom", 1.0)
+            if abs(saved_zoom - v.scale) > 0.01:
+                v._set_scale_and_scroll(v._clamp_scale(saved_zoom))
+
+            # Restore scroll position after a brief layout settle
+            saved_scroll = tab_data.get("scroll_offset", 0.0)
+            saved_page = tab_data.get("page_index", 0)
+            GLib.timeout_add(150, self._apply_scroll_restore, v, saved_scroll, saved_page)
+
+            # Disconnect this one-shot handler
+            try:
+                v.disconnect_by_func(on_loaded)
+            except TypeError:
+                pass
+
+        view.connect('document-loaded', on_loaded)
+
+    @staticmethod
+    def _apply_scroll_restore(view, scroll_offset, page_index):
+        """Apply saved scroll position, falling back to page navigation."""
+        if scroll_offset > 0:
+            view.vadjustment.set_value(scroll_offset)
+        elif page_index > 0:
+            view.scroll_to_page(page_index)
+        return False  # Don't repeat
+
 
     def prompt_save_changes(self, dirty_pages, close_app=True):
         count = len(dirty_pages)
@@ -901,7 +1177,11 @@ class InlineaWindow(Adw.ApplicationWindow):
                 if close_app:
                     try: self.disconnect_by_func(self.on_close_request)
                     except: pass
-                    WindowManager.get().unregister(self)
+                    wm = WindowManager.get()
+                    # Save session BEFORE unregistering
+                    if len(wm.windows) <= 1:
+                        SessionManager.get().save_now(clean_exit=True)
+                    wm.unregister(self)
                     self.close()
                 else:
                     page = dirty_pages[0] 
@@ -921,7 +1201,11 @@ class InlineaWindow(Adw.ApplicationWindow):
                 if close_app:
                     try: self.disconnect_by_func(self.on_close_request)
                     except Exception: pass
-                    WindowManager.get().unregister(self)
+                    wm = WindowManager.get()
+                    # Save session BEFORE unregistering
+                    if len(wm.windows) <= 1:
+                        SessionManager.get().save_now(clean_exit=True)
+                    wm.unregister(self)
                     self.close()
                 else:
                     page = dirty_pages[0]

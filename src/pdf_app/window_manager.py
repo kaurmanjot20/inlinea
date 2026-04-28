@@ -6,6 +6,8 @@ Used by PDFApplication to route new file opens to the active window,
 and by InlineaWindow to create new windows when tabs are detached.
 """
 
+from pdf_app.session_manager import SessionManager
+
 
 class WindowManager:
     """Global registry for all open application windows."""
@@ -30,6 +32,7 @@ class WindowManager:
         if window not in self.windows:
             self.windows.append(window)
         self.active_window = window
+        SessionManager.get().schedule_save()
 
     def unregister(self, window):
         """Unregister a window that is being destroyed."""
@@ -37,6 +40,7 @@ class WindowManager:
             self.windows.remove(window)
         if self.active_window == window:
             self.active_window = self.windows[-1] if self.windows else None
+        SessionManager.get().schedule_save()
 
     # ========== Focus Tracking ==========
 
