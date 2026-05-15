@@ -1,83 +1,85 @@
 # <img src="src/assets/images/inlinea.png" width="32" height="32" align="center"> Inlinea
 
-**The Linux-first, native, and clean PDF editor.**
+A native PDF reader and annotation tool for Linux, built with Python, GTK 4, and Libadwaita.
 
-Built with Python, GTK 4, and Libadwaita, Inlinea is designed for users who need a fast, distraction-free environment for reading and annotating PDF documents.
-
----
-
-## ✨ Key Features
-
-### 🖋️ Powerful Annotations
-*   **High-Fidelity Highlighting:** Smooth, multi-line text highlights and underlines.
-*   **Area Selection:** Draw boxes to highlight specific diagrams or regions.
-*   **Inline Text Editing:** Add text anywhere on the page with a clean popup editor.
-*   **Custom Colors:** Personalize your annotations with an integrated color picker.
-
-### 📖 Professional Viewing Experience
-*   **Browser-Style Tabs:** Efficiently manage multiple documents in one window.
-*   **Adaptive Layouts:** Toggle between single-page, dual-page, and continuous scroll modes.
-*   **Fluid Zoom:** Precise pinch-to-zoom and Ctrl+Scroll support.
-*   **Lazy Rendering:** Lightning-fast thumbnail sidebar, even for massive documents.
-
-### 🛠️ Seamless Workflow
-*   **Native PDF Standards:** Annotations are saved directly into the PDF; no sidecar files needed.
-*   **Flattened Export:** Generate clean PDFs for sharing where annotations are baked into the layout.
-*   **Robust Undo/Redo:** Full history support for all your edits.
-
----
-
-## 📸 Preview
+I couldn’t find a PDF editor on Linux that felt clean and fast for annotation. Most tools were either powerful but clunky, or simple but missing basic workflows, so I started building one.
+Inlinea is meant to be fast, minimal and just work - open a PDF, highlight stuff, add notes, save, done.
 
 <p align="center">
-  <img src="src/assets/images/screenshot0.png" width="49%" /> 
+  <img src="src/assets/images/screenshot0.png" width="49%" />
   <img src="src/assets/images/screenshot1.png" width="49%" />
 </p>
 
----
+## What it does
 
-## 🚀 Getting Started
+- **Draggable tabs**   
+ pull a tab out into its own window, drag it back to merge. Browser-style.
+- **Session restore**   
+remembers every open file, scroll position, zoom level, and active tab across restarts.
+- **Crash recovery**   
+detects unclean shutdowns and brings back your full workspace on relaunch.
+- **Native PDF annotations**   
+highlights, underlines, text notes, area selections. Saved as standard PDF markup, no sidecar files.
+- **Flattened export**   
+burns annotations into the page layout for sharing with anyone, regardless of their reader.
+- **Text formatting**   
+  - bold
+  - italic
+  - underline
+  - font picker on text annotations. Full undo/redo for everything.
+- **Virtual scroll**   
+pages load and unload as you scroll. 500-page PDFs stay snappy.
+- **Focal-point zoom**   
+Ctrl+Scroll and pinch zoom into where your cursor is, not the center of the screen.
 
-### Prerequisites
+## Getting Started
 
-Inlinea requires GTK 4, Poppler, Cairo, and PyMuPDF.
+### Dependencies
 
-#### Fedora / RHEL
+You'll need GTK 4, Libadwaita, Poppler, Cairo, and PyMuPDF installed.
+
+**Fedora / RHEL:**
 ```bash
 sudo dnf install \
   gtk4-devel libadwaita-devel python3-gobject \
   python3-cairo poppler-glib-devel cairo-devel python3-pymupdf
 ```
 
-#### Ubuntu / Debian
+**Ubuntu / Debian:**
 ```bash
 sudo apt install \
   libgtk-4-dev libadwaita-1-dev python3-gi python3-cairo \
   libgirepository1.0-dev libpoppler-glib-dev gir1.2-poppler-0.18 python3-pymupdf
 ```
 
-### Running Locally
+### Run it locally
 
-Clone the repository and run:
 ```bash
+git clone https://github.com/kaurmanjot20/inlinea.git
+cd inlinea
 python3 main.py
 ```
 
+That's it. No build step, no bundling, no npm install.
+
 ### Desktop Integration
 
-To add Inlinea to your system's "Open With" menu and register it as a PDF handler:
+If you want Inlinea to show up in your system's "Open With" menu for PDFs:
+
 ```bash
 bash install-desktop.sh
 ```
-This installs a `.desktop` entry to `~/.local/share/applications/`.
 
----
+This drops a `.desktop` file into `~/.local/share/applications/` and registers the app as a PDF handler. After that you can right-click any PDF → Open With → Inlinea.
 
-## 🤝 Contributing
 
-Contributions are welcome! If you have a feature request or found a bug, please check out our [Contributing Guidelines](CONTRIBUTING.md).
 
-## 📄 License
+## Contributing
 
-This project is licensed under the MIT License.
-License
+Contributions are welcome - whether it's a bug fix, a new feature, or just cleaning something up. Check out the [Contributing Guidelines](CONTRIBUTING.md) for how to get started.
+
+All PRs go through review before merging. Please open an issue first if you're planning something big so we can discuss the approach.
+
+## License
+
+MIT - see [LICENSE](LICENSE) for details.
