@@ -102,8 +102,8 @@ class SessionManager:
 
     def _write_session(self, clean_exit=True):
         """Collect state from all windows and write to disk."""
-        from pdf_app.window_manager import WindowManager
-        from pdf_app.ui.pdf_view import PDFView
+        from inlinea.window_manager import WindowManager
+        from inlinea.ui.pdf_view import PDFView
 
         wm = WindowManager.get()
         windows_data = []

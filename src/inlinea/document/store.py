@@ -91,7 +91,7 @@ class AnnotationStore:
     # ========== PDF I/O ==========
 
     def load_from_pdf(self, file_path: str):
-        from pdf_app.document.pdf_storage import load_annotations_from_pdf
+        from inlinea.document.pdf_storage import load_annotations_from_pdf
 
         self.annotations = load_annotations_from_pdf(file_path)
         self._undo_stack.clear()
@@ -99,7 +99,7 @@ class AnnotationStore:
         self.is_dirty = False
 
     def save_to_pdf(self, source_path: str, output_path: str):
-        from pdf_app.document.pdf_storage import save_annotations_to_pdf
+        from inlinea.document.pdf_storage import save_annotations_to_pdf
 
         save_annotations_to_pdf(source_path, output_path, self.annotations)
         self.is_dirty = False

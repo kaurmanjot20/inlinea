@@ -6,7 +6,7 @@ Used by PDFApplication to route new file opens to the active window,
 and by InlineaWindow to create new windows when tabs are detached.
 """
 
-from pdf_app.session_manager import SessionManager
+from inlinea.session_manager import SessionManager
 
 
 class WindowManager:
@@ -63,6 +63,6 @@ class WindowManager:
             add_initial_tab: If False, skip adding the empty welcome tab.
                             Used when creating windows for detached tabs.
         """
-        from pdf_app.window import InlineaWindow
+        from inlinea.window import InlineaWindow
         win = InlineaWindow(application=app, add_initial_tab=add_initial_tab)
         return win

@@ -6,7 +6,7 @@ gi.require_version('Pango', '1.0')
 gi.require_version('PangoCairo', '1.0')
 from gi.repository import Gtk, Gdk, Pango, PangoCairo
 
-from pdf_app.document.engine import dispatch_render_job, RenderContext, RenderPriority
+from inlinea.document.engine import dispatch_render_job, RenderContext, RenderPriority
 
 class PDFDrawingArea(Gtk.DrawingArea):
     def __init__(self, page, scale, store, uri: str, page_index: int):
@@ -37,9 +37,9 @@ class PDFDrawingArea(Gtk.DrawingArea):
         self.handle_radius = 12  
         self._old_rects = None  # Store original rects for undo
         
-        # Text Editing State
         self.editing_mode = False
         self.cursor_position = 0
+        self.text_selection_anchor = None
         self.caret_visible = True
         self._caret_timer = 0
         
@@ -79,7 +79,7 @@ class PDFDrawingArea(Gtk.DrawingArea):
             self.queue_draw()
 
     def _extract_links(self):
-        from pdf_app.utils.links import extract_embedded_links, extract_text_links
+        from inlinea.utils.links import extract_embedded_links, extract_text_links
         self.pdf_links.extend(extract_embedded_links(self.page))
         self.pdf_links.extend(extract_text_links(self.page))
         if self.pdf_links:
@@ -150,13 +150,13 @@ class PDFDrawingArea(Gtk.DrawingArea):
         first_rect = ann.rects[0]
         last_rect = ann.rects[-1]
         
-        # Start handle: Top-left of first rect (with offset for circle)
+        # Start handle: Top-left of first rect
         start_x = first_rect[0] * self.context.scale
-        start_y = first_rect[1] * self.context.scale - self.handle_radius
+        start_y = first_rect[1] * self.context.scale
         
-        # End handle: Bottom-right of last rect (with offset)
+        # End handle: Bottom-right of last rect
         end_x = (last_rect[0] + last_rect[2]) * self.context.scale
-        end_y = (last_rect[1] + last_rect[3]) * self.context.scale + self.handle_radius
+        end_y = (last_rect[1] + last_rect[3]) * self.context.scale
         
         return (start_x, start_y), (end_x, end_y)
 
@@ -206,7 +206,79 @@ class PDFDrawingArea(Gtk.DrawingArea):
         start_handle, end_handle = self.get_handle_positions()
         threshold = self.handle_radius * 2
 
-        if start_handle:
+        # ---- TYPE-SPECIFIC CORNER HANDLES (must come first) ----
+        # For square and text annotations, match the named corner/edge handles
+        # BEFORE the generic start/end handler, since TL/BR positions overlap.
+
+        if start_handle and ann.type == 'square':
+            r = ann.rects[0]
+            x = r[0] * self.context.scale
+            y = r[1] * self.context.scale
+            w = r[2] * self.context.scale
+            h = r[3] * self.context.scale
+            
+            handles = [
+                ('nw', x, y),
+                ('ne', x + w, y),
+                ('sw', x, y + h),
+                ('se', x + w, y + h)
+            ]
+            
+            for name, hx, hy in handles:
+                dist = ((start_x - hx)**2 + (start_y - hy)**2)**0.5
+                if dist < threshold:
+                    self._resizing_handle = name
+                    self._resize_start_pos = (start_x, start_y)
+                    self._old_rects = list(ann.rects)
+                    if name == 'nw': self._anchor_pdf = (r[0]+r[2], r[1]+r[3])
+                    elif name == 'ne': self._anchor_pdf = (r[0], r[1]+r[3])
+                    elif name == 'sw': self._anchor_pdf = (r[0]+r[2], r[1])
+                    elif name == 'se': self._anchor_pdf = (r[0], r[1])
+                    
+                    cursor_name = f"{name}-resize"
+                    cursor = Gdk.Cursor.new_from_name(cursor_name, None)
+                    self.set_cursor(cursor)
+                    return True
+
+        if start_handle and ann.type == 'text':
+            r = ann.rects[0]
+            x = r[0] * self.context.scale
+            y = r[1] * self.context.scale
+            w = r[2] * self.context.scale
+            h = r[3] * self.context.scale
+            
+            handles = [
+                ('nw', x, y), ('ne', x + w, y),
+                ('sw', x, y + h), ('se', x + w, y + h),
+                ('n', x + w/2, y), ('s', x + w/2, y + h),
+                ('w', x, y + h/2), ('e', x + w, y + h/2)
+            ]
+            
+            for name, hx, hy in handles:
+                dist = ((start_x - hx)**2 + (start_y - hy)**2)**0.5
+                if dist < threshold:
+                    self._resizing_handle = name
+                    self._resize_start_pos = (start_x, start_y)
+                    self._old_rects = list(ann.rects)
+                    if name == 'nw': self._anchor_pdf = (r[0]+r[2], r[1]+r[3])
+                    elif name == 'ne': self._anchor_pdf = (r[0], r[1]+r[3])
+                    elif name == 'sw': self._anchor_pdf = (r[0]+r[2], r[1])
+                    elif name == 'se': self._anchor_pdf = (r[0], r[1])
+                    elif name == 'n': self._anchor_pdf = (0, r[1]+r[3])
+                    elif name == 's': self._anchor_pdf = (0, r[1])
+                    elif name == 'w': self._anchor_pdf = (r[0]+r[2], 0)
+                    elif name == 'e': self._anchor_pdf = (r[0], 0)
+                    
+                    cursor_name = f"{name}-resize"
+                    if name in ['n', 's']: cursor_name = 'ns-resize'
+                    elif name in ['e', 'w']: cursor_name = 'ew-resize'
+                    
+                    cursor = Gdk.Cursor.new_from_name(cursor_name, None)
+                    self.set_cursor(cursor)
+                    return True
+
+        # ---- GENERIC START/END HANDLES (highlight/underline text regions) ----
+        if start_handle and ann.type in ('highlight', 'underline'):
             dist_start = ((start_x - start_handle[0])**2 + (start_y - start_handle[1])**2)**0.5
             dist_end = ((start_x - end_handle[0])**2 + (start_y - end_handle[1])**2)**0.5
             
@@ -226,93 +298,26 @@ class PDFDrawingArea(Gtk.DrawingArea):
                 self._resize_start_pos = (start_x, start_y)
                 self._old_rects = list(self.selected_annotation.rects) if self.selected_annotation.rects else []
                 if self.selected_annotation.rects:
-                    # Anchor is the middle-left of the FIRST rectangle
                     first_r = self.selected_annotation.rects[0]
                     self._anchor_pdf = (first_r[0], first_r[1] + first_r[3]/2.0)
                 cursor = Gdk.Cursor.new_from_name("e-resize", None)
                 self.set_cursor(cursor)
                 return True
-            
-            if ann.type == 'square':
-                 # Recheck all 4 corners
-                 r = ann.rects[0]
-                 x = r[0] * self.context.scale
-                 y = r[1] * self.context.scale
-                 w = r[2] * self.context.scale
-                 h = r[3] * self.context.scale
-                 
-                 # TL, TR, BL, BR
-                 handles = [
-                     ('nw', x, y),
-                     ('ne', x + w, y),
-                     ('sw', x, y + h),
-                     ('se', x + w, y + h)
-                 ]
-                 
-                 for name, hx, hy in handles:
-                     dist = ((start_x - hx)**2 + (start_y - hy)**2)**0.5
-                     if dist < threshold:
-                         self._resizing_handle = name
-                         self._resize_start_pos = (start_x, start_y)
-                         self._old_rects = list(ann.rects)
-                         # Anchor is OPPOSITE corner
-                         if name == 'nw': self._anchor_pdf = (r[0]+r[2], r[1]+r[3])
-                         elif name == 'ne': self._anchor_pdf = (r[0], r[1]+r[3])
-                         elif name == 'sw': self._anchor_pdf = (r[0]+r[2], r[1])
-                         elif name == 'se': self._anchor_pdf = (r[0], r[1])
-                         
-                         cursor_name = f"{name}-resize"
-                         cursor = Gdk.Cursor.new_from_name(cursor_name, None)
-                         self.set_cursor(cursor)
-                         return True
-            
-            if ann.type == 'text':
-                 # Same handles as square
-                 r = ann.rects[0]
-                 x = r[0] * self.context.scale
-                 y = r[1] * self.context.scale
-                 w = r[2] * self.context.scale
-                 h = r[3] * self.context.scale
-                 
-                 handles = [
-                     ('nw', x, y), ('ne', x + w, y),
-                     ('sw', x, y + h), ('se', x + w, y + h),
-                     ('n', x + w/2, y), ('s', x + w/2, y + h),
-                     ('w', x, y + h/2), ('e', x + w, y + h/2)
-                 ]
-                 
-                 for name, hx, hy in handles:
-                     dist = ((start_x - hx)**2 + (start_y - hy)**2)**0.5
-                     if dist < threshold:
-                         self._resizing_handle = name
-                         self._resize_start_pos = (start_x, start_y)
-                         self._old_rects = list(ann.rects)
-                         # Anchor mapping
-                         if name == 'nw': self._anchor_pdf = (r[0]+r[2], r[1]+r[3])
-                         elif name == 'ne': self._anchor_pdf = (r[0], r[1]+r[3])
-                         elif name == 'sw': self._anchor_pdf = (r[0]+r[2], r[1])
-                         elif name == 'se': self._anchor_pdf = (r[0], r[1])
-                         elif name == 'n': self._anchor_pdf = (0, r[1]+r[3])
-                         elif name == 's': self._anchor_pdf = (0, r[1])
-                         elif name == 'w': self._anchor_pdf = (r[0]+r[2], 0)
-                         elif name == 'e': self._anchor_pdf = (r[0], 0)
-                         
-                         cursor_name = f"{name}-resize"
-                         # n, s, e, w needs mapping
-                         if name in ['n', 's']: cursor_name = 'ns-resize'
-                         elif name in ['e', 'w']: cursor_name = 'ew-resize'
-                         
-                         cursor = Gdk.Cursor.new_from_name(cursor_name, None)
-                         self.set_cursor(cursor)
-                         return True
-            
+
         # Check for MOVE (drag body)
         pdf_x = start_x / self.context.scale
         pdf_y = start_y / self.context.scale
-        # Check if point inside any rect
         for r in ann.rects:
-            # r is (x, y, w, h)
             if r[0] <= pdf_x <= r[0] + r[2] and r[1] <= pdf_y <= r[1] + r[3]:
+                if self.editing_mode and ann.type == 'text':
+                    self._resizing_handle = 'text_select'
+                    self._resize_start_pos = (start_x, start_y)
+                    self.set_cursor_from_click(start_x, start_y, keep_selection=False)
+                    self.text_selection_anchor = self.cursor_position
+                    cursor = Gdk.Cursor.new_from_name("text", None)
+                    self.set_cursor(cursor)
+                    return True
+                
                 self._resizing_handle = 'move'
                 self._resize_start_pos = (start_x, start_y)
                 self._old_rects = list(ann.rects) if ann.rects else []
@@ -321,6 +326,7 @@ class PDFDrawingArea(Gtk.DrawingArea):
                 return True
                 
         return False
+
             
     def handle_drag_update(self, offset_x, offset_y):
         if not self._resizing_handle or not self.selected_annotation:
@@ -330,6 +336,10 @@ class PDFDrawingArea(Gtk.DrawingArea):
         start_x, start_y = self._resize_start_pos
         cur_x = start_x + offset_x
         cur_y = start_y + offset_y
+
+        if self._resizing_handle == 'text_select':
+            self.set_cursor_from_click(cur_x, cur_y, keep_selection=True)
+            return
 
         # Convert to PDF coords
         pdf_x = cur_x / self.context.scale
@@ -627,7 +637,61 @@ class PDFDrawingArea(Gtk.DrawingArea):
         else:
             c.set_source_rgba(0, 0, 0, 1)
         
+        # Draw Selection Background
+        if self.editing_mode and self.selected_annotation == ann and self.text_selection_anchor is not None and self.text_selection_anchor != self.cursor_position:
+            c.save()
+            c.set_source_rgba(0.2, 0.6, 1.0, 0.4) # Highlight blue
+            start_char = min(self.cursor_position, self.text_selection_anchor)
+            end_char = max(self.cursor_position, self.text_selection_anchor)
+            start_byte = len(ann.content[:start_char].encode('utf-8'))
+            end_byte = len(ann.content[:end_char].encode('utf-8'))
+            
+            piter = layout.get_iter()
+            while True:
+                line = piter.get_line()
+                if not line:
+                    break
+                
+                line_start_index = line.start_index
+                line_end_index = line_start_index + line.length
+                
+                overlap_start = max(start_byte, line_start_index)
+                overlap_end = min(end_byte, line_end_index)
+                
+                is_selected = False
+                if overlap_start < overlap_end:
+                    is_selected = True
+                elif line.length == 0 and start_byte <= line_start_index and end_byte > line_end_index:
+                    is_selected = True
+                    
+                if is_selected:
+                    pos1 = layout.index_to_pos(overlap_start)
+                    pos2 = layout.index_to_pos(overlap_end)
+                    
+                    x0 = pos1.x / Pango.SCALE
+                    x1 = pos2.x / Pango.SCALE
+                    if x1 < x0:
+                        x0, x1 = x1, x0
+                        
+                    if start_byte < line_start_index:
+                        x0 = 0
+                        
+                    if end_byte > line_end_index or (line.length == 0 and end_byte > line_end_index):
+                        x1 = w
+                        
+                    extents = piter.get_line_extents()[1]
+                    y_pos = extents.y / Pango.SCALE
+                    height = extents.height / Pango.SCALE
+                    
+                    c.rectangle(x + x0, y + y_pos, max(1.0, x1 - x0), height)
+                    c.fill()
+                        
+                if not piter.next_line():
+                    break
+            c.restore()
+        
         # Draw Text
+        c.move_to(x, y)
         PangoCairo.show_layout(c, layout)
         
         # Underline (Manual since Pango underline can be tricky with scaling)
@@ -681,6 +745,7 @@ class PDFDrawingArea(Gtk.DrawingArea):
             return
             
         self.editing_mode = enabled
+        self.text_selection_anchor = None
         if enabled:
             if self.selected_annotation and self.selected_annotation.type == 'text':
                 self.cursor_position = len(self.selected_annotation.content)
@@ -706,10 +771,19 @@ class PDFDrawingArea(Gtk.DrawingArea):
         self.queue_draw()
         return True
 
+    def _reset_caret(self):
+        self.caret_visible = True
+        from gi.repository import GLib
+        if self._caret_timer:
+            GLib.source_remove(self._caret_timer)
+        self._caret_timer = GLib.timeout_add(500, self._toggle_caret)
+
     def on_im_commit(self, im_context, text):
         if not self.editing_mode or not self.selected_annotation: return
         ann = self.selected_annotation
         if ann.type != 'text': return
+        
+        self._delete_selection()
         
         # Record undo
         self.store.record_text_change(ann.id, ann.content)
@@ -720,6 +794,66 @@ class PDFDrawingArea(Gtk.DrawingArea):
         ann.content = left + text + right
         self.cursor_position += len(text)
         self.queue_draw()
+    def _create_pango_layout_for_ann(self, ann):
+        surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, 1, 1)
+        c = cairo.Context(surface)
+        layout = PangoCairo.create_layout(c)
+        layout.set_text(ann.content, -1)
+        if not ann.rects: return layout
+        w = ann.rects[0][2]
+        layout.set_width(int(w * Pango.SCALE))
+        layout.set_wrap(Pango.WrapMode.WORD_CHAR)
+        
+        font_desc_str = ann.font_family
+        if getattr(ann, 'bold', False): font_desc_str += " Bold"
+        if getattr(ann, 'italic', False): font_desc_str += " Italic"
+        font_desc_str += f" {getattr(ann, 'font_size', 12)}"
+        
+        layout.set_font_description(Pango.FontDescription(font_desc_str))
+        return layout
+
+    def set_cursor_from_click(self, click_x, click_y, keep_selection=False):
+        if not self.editing_mode or not self.selected_annotation or self.selected_annotation.type != 'text':
+            return
+        ann = self.selected_annotation
+        if not ann.rects: return
+        
+        layout = self._create_pango_layout_for_ann(ann)
+        ax, ay = ann.rects[0][0], ann.rects[0][1]
+        
+        pdf_x = click_x / self.context.scale
+        pdf_y = click_y / self.context.scale
+        
+        px = (pdf_x - ax) * Pango.SCALE
+        py = (pdf_y - ay) * Pango.SCALE
+        
+        inside, index, trailing = layout.xy_to_index(int(px), int(py))
+        
+        try:
+            byte_prefix = ann.content.encode('utf-8')[:index]
+            char_index = len(byte_prefix.decode('utf-8', errors='replace'))
+            if trailing:
+                char_index += 1
+            self.cursor_position = max(0, min(len(ann.content), char_index))
+            if not keep_selection:
+                self.text_selection_anchor = None
+            self._reset_caret()
+            self.queue_draw()
+        except Exception:
+            pass
+
+    def _delete_selection(self):
+        if self.text_selection_anchor is None or self.text_selection_anchor == self.cursor_position:
+            return False
+        ann = self.selected_annotation
+        start = min(self.cursor_position, self.text_selection_anchor)
+        end = max(self.cursor_position, self.text_selection_anchor)
+        self.store.record_text_change(ann.id, ann.content)
+        ann.content = ann.content[:start] + ann.content[end:]
+        self.cursor_position = start
+        self.text_selection_anchor = None
+        ann._auto_shrink = True
+        return True
 
     def on_key_pressed(self, controller, keyval, keycode, state):
         if not self.editing_mode or not self.selected_annotation:
@@ -728,11 +862,43 @@ class PDFDrawingArea(Gtk.DrawingArea):
         ann = self.selected_annotation
         if ann.type != 'text': return False
         
+        self._reset_caret()
+        
+        ctrl = state & Gdk.ModifierType.CONTROL_MASK
+        shift = state & Gdk.ModifierType.SHIFT_MASK
+
+        if ctrl:
+            if keyval == Gdk.KEY_a or keyval == Gdk.KEY_A:
+                self.text_selection_anchor = 0
+                self.cursor_position = len(ann.content)
+                self.queue_draw()
+                return True
+            if keyval == Gdk.KEY_c or keyval == Gdk.KEY_C:
+                if self.text_selection_anchor is not None and self.text_selection_anchor != self.cursor_position:
+                    start = min(self.cursor_position, self.text_selection_anchor)
+                    end = max(self.cursor_position, self.text_selection_anchor)
+                    self.get_clipboard().set(ann.content[start:end])
+                return True
+            if keyval == Gdk.KEY_v or keyval == Gdk.KEY_V:
+                self.get_clipboard().read_text_async(None, self._on_paste_ready)
+                return True
+
+        # Keep or clear selection anchor for movement keys
+        if keyval in (Gdk.KEY_Left, Gdk.KEY_Right, Gdk.KEY_Up, Gdk.KEY_Down):
+            if shift:
+                if self.text_selection_anchor is None:
+                    self.text_selection_anchor = self.cursor_position
+            else:
+                self.text_selection_anchor = None
+
         if keyval == Gdk.KEY_Escape:
             self.set_editing_mode(False)
             return True
             
         if keyval == Gdk.KEY_BackSpace:
+            if self._delete_selection():
+                self.queue_draw()
+                return True
             if self.cursor_position > 0:
                 ann._auto_shrink = True
                 self.store.record_text_change(ann.id, ann.content)
@@ -744,6 +910,9 @@ class PDFDrawingArea(Gtk.DrawingArea):
             return True
             
         if keyval == Gdk.KEY_Delete:
+            if self._delete_selection():
+                self.queue_draw()
+                return True
             if self.cursor_position < len(ann.content):
                 ann._auto_shrink = True
                 self.store.record_text_change(ann.id, ann.content)
@@ -753,6 +922,33 @@ class PDFDrawingArea(Gtk.DrawingArea):
                 self.queue_draw()
             return True
             
+        if keyval in (Gdk.KEY_Up, Gdk.KEY_Down):
+            if not ann.rects: return True
+            layout = self._create_pango_layout_for_ann(ann)
+            byte_index = len(ann.content[:self.cursor_position].encode('utf-8'))
+            strong_pos, _ = layout.get_cursor_pos(byte_index)
+            
+            offset_y = strong_pos.height if strong_pos.height > 0 else int(getattr(ann, 'font_size', 12) * Pango.SCALE)
+            
+            if keyval == Gdk.KEY_Up:
+                target_y = strong_pos.y - (offset_y // 2)
+            else:
+                target_y = strong_pos.y + offset_y + (offset_y // 2)
+            
+            inside, index, trailing = layout.xy_to_index(strong_pos.x, target_y)
+            
+            try:
+                byte_prefix = ann.content.encode('utf-8')[:index]
+                char_index = len(byte_prefix.decode('utf-8', errors='replace'))
+                if trailing:
+                    char_index += 1
+                self.cursor_position = max(0, min(len(ann.content), char_index))
+                self.caret_visible = True
+                self.queue_draw()
+            except Exception:
+                pass
+            return True
+
         if keyval == Gdk.KEY_Left:
             if self.cursor_position > 0:
                 self.cursor_position -= 1
@@ -768,6 +964,7 @@ class PDFDrawingArea(Gtk.DrawingArea):
             return True
             
         if keyval == Gdk.KEY_Return or keyval == Gdk.KEY_KP_Enter:
+            self._delete_selection()
             ann._auto_shrink = True
             self.store.record_text_change(ann.id, ann.content)
             left = ann.content[:self.cursor_position]
@@ -780,14 +977,16 @@ class PDFDrawingArea(Gtk.DrawingArea):
         # Fallback for printable characters if IMContext didn't consume it
         char = Gdk.keyval_to_unicode(keyval)
         if char >= 32 and char != 127:
-            text = chr(char)
-            self.store.record_text_change(ann.id, ann.content)
-            left = ann.content[:self.cursor_position]
-            right = ann.content[self.cursor_position:]
-            ann.content = left + text + right
-            self.cursor_position += 1
-            self.queue_draw()
-            return True
+            if not ctrl:
+                text = chr(char)
+                self._delete_selection()
+                self.store.record_text_change(ann.id, ann.content)
+                left = ann.content[:self.cursor_position]
+                right = ann.content[self.cursor_position:]
+                ann.content = left + text + right
+                self.cursor_position += 1
+                self.queue_draw()
+                return True
             
         return False
 
@@ -878,61 +1077,56 @@ class PDFDrawingArea(Gtk.DrawingArea):
              c.set_source_rgba(0.2, 0.6, 1.0, 1.0)
              c.stroke()
              
-             return
 
-
-        
         start_handle, end_handle = self.get_handle_positions()
-        
-        
+
         first_rect = ann.rects[0]
         last_rect = ann.rects[-1]
-        
+
         # Start Handle: Top-Left of First Rect
         x1 = first_rect[0] * self.context.scale
         y1 = first_rect[1] * self.context.scale
-        h1 = first_rect[3] * self.context.scale
-        
+
         # End Handle: Bottom-Right of Last Rect
         x2 = (last_rect[0] + last_rect[2]) * self.context.scale
         y2 = (last_rect[1] + last_rect[3]) * self.context.scale
-        h2 = last_rect[3] * self.context.scale
-        
-        handle_radius = 10  
-        
-        # Start Handle
-        c.set_line_width(3)
-        c.set_source_rgba(0.2, 0.6, 1.0, 1.0)  # Blue
-        c.move_to(x1, y1)
-        c.line_to(x1, y1 + h1)
-        c.stroke()
-        
-        # Circle with white border at Top-Left
-        c.set_source_rgba(1, 1, 1, 1)  # White border
-        c.arc(x1, y1 - handle_radius, handle_radius + 2, 0, 6.28)
-        c.fill()
-        c.set_source_rgba(0.2, 0.6, 1.0, 1.0)  # Blue fill
-        c.arc(x1, y1 - handle_radius, handle_radius, 0, 6.28)
-        c.fill()
-        
-        # End Handle
-        c.set_source_rgba(0.2, 0.6, 1.0, 1.0)  # Blue
-        c.move_to(x2, y2 - h2)
-        c.line_to(x2, y2)
-        c.stroke()
-        
-        # Circle with white border at Bottom-Right
-        c.set_source_rgba(1, 1, 1, 1)  # White border
-        c.arc(x2, y2 + handle_radius, handle_radius + 2, 0, 6.28)
-        c.fill()
-        c.set_source_rgba(0.2, 0.6, 1.0, 1.0)  # Blue fill
-        c.arc(x2, y2 + handle_radius, handle_radius, 0, 6.28)
-        c.fill()
 
-        
-        c.set_source_rgba(0.2, 0.6, 1.0, 0.3) # Faint blue
+        handle_r = 5
+
+        # Start Handle (square)
+        c.set_source_rgba(1, 1, 1, 1)
+        c.rectangle(x1 - handle_r, y1 - handle_r, handle_r * 2, handle_r * 2)
+        c.fill_preserve()
+        c.set_source_rgba(0.2, 0.6, 1.0, 1.0)
+        c.set_line_width(1)
+        c.stroke()
+
+        # End Handle (square)
+        c.set_source_rgba(1, 1, 1, 1)
+        c.rectangle(x2 - handle_r, y2 - handle_r, handle_r * 2, handle_r * 2)
+        c.fill_preserve()
+        c.set_source_rgba(0.2, 0.6, 1.0, 1.0)
+        c.stroke()
+
+        # Faint blue overlay on selected rects
+        c.set_source_rgba(0.2, 0.6, 1.0, 0.3)
         for r in ann.rects:
              c.rectangle(r[0]*self.context.scale, r[1]*self.context.scale, r[2]*self.context.scale, r[3]*self.context.scale)
              c.fill()
 
-
+    def _on_paste_ready(self, clipboard, result):
+        try:
+            text = clipboard.read_text_finish(result)
+            if text and self.editing_mode and self.selected_annotation:
+                ann = self.selected_annotation
+                if ann.type == 'text':
+                    self._delete_selection()
+                    self.store.record_text_change(ann.id, ann.content)
+                    left = ann.content[:self.cursor_position]
+                    right = ann.content[self.cursor_position:]
+                    ann.content = left + text + right
+                    self.cursor_position += len(text)
+                    self._reset_caret()
+                    self.queue_draw()
+        except Exception:
+            pass

@@ -2,7 +2,7 @@
 import fitz  # PyMuPDF
 from typing import List, Tuple
 import json
-from pdf_app.document.store import Annotation
+from inlinea.document.store import Annotation
 
 APP_CREATOR = "Inlinea"
 
