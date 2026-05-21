@@ -57,20 +57,30 @@ sudo apt install \
 ```bash
 git clone https://github.com/kaurmanjot20/inlinea.git
 cd inlinea
-pip install -e .
-inlinea
-```
 
-The `pip install -e .` step registers the `inlinea` command on your `PATH`.
+# Run directly from source
+python3 -m inlinea
+```
 
 **Arch Linux:**
 ```bash
 sudo pacman -S gtk4 libadwaita python-gobject python-cairo poppler-glib python-pymupdf
-pip install -e .
-inlinea
+git clone https://github.com/kaurmanjot20/inlinea.git
+cd inlinea
+
+# Run directly from source
+python3 -m inlinea
 ```
 
+### Desktop Integration (Right-click "Open With" support)
 
+If you are running from source and want to be able to double-click PDFs or right-click to "Open With -> Inlinea" in your system file manager, simply run the desktop integration script:
+
+```bash
+bash install-desktop.sh
+```
+
+This will automatically create a local executable wrapper in `~/.local/bin/` and register the `.desktop` shortcut with your system.
 
 ## Contributing
 
