@@ -1,25 +1,43 @@
-#!/usr/bin/env bash
-# install-desktop.sh — Register Inlinea in the system "Open With" menu
-set -euo pipefail
+#!/bin/bash
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DESKTOP_FILE="$SCRIPT_DIR/com.inlinea.app.desktop"
-TARGET_DIR="$HOME/.local/share/applications"
-
-if [ ! -f "$DESKTOP_FILE" ]; then
-    echo "Error: $DESKTOP_FILE not found."
+# Ensure we are running from the source directory
+if [ ! -d "src/inlinea" ]; then
+    echo "Error: Please run this script from the root of the inlinea source directory."
     exit 1
 fi
 
-mkdir -p "$TARGET_DIR"
+SRC_DIR=$(pwd)
+BIN_DIR="$HOME/.local/bin"
+APP_DIR="$HOME/.local/share/applications"
+ICON_DIR="$HOME/.local/share/icons/hicolor/512x512/apps"
 
-# Copy desktop file and patch the Exec path to point to the real install dir
-sed "s|INSTALL_DIR|$SCRIPT_DIR|g" "$DESKTOP_FILE" > "$TARGET_DIR/com.inlinea.app.desktop"
+echo "Setting up Inlinea desktop integration..."
 
-# Update the MIME database so the system picks it up
-if command -v update-desktop-database &>/dev/null; then
-    update-desktop-database "$TARGET_DIR" 2>/dev/null || true
+# 1. Create binary wrapper
+mkdir -p "$BIN_DIR"
+cat <<EOF > "$BIN_DIR/inlinea"
+#!/bin/bash
+cd "$SRC_DIR" && python3 -m inlinea "\$@"
+EOF
+chmod +x "$BIN_DIR/inlinea"
+echo "Created executable wrapper at $BIN_DIR/inlinea"
+
+# 2. Install icon
+mkdir -p "$ICON_DIR"
+if [ -f "data/icons/inlinea.png" ]; then
+    cp data/icons/inlinea.png "$ICON_DIR/"
+    echo "Installed application icon"
 fi
 
-echo "✓ Installed Inlinea desktop entry to $TARGET_DIR/com.inlinea.app.desktop"
-echo "  You can now right-click a PDF → Open With → Inlinea"
+# 3. Install desktop entry
+mkdir -p "$APP_DIR"
+cp data/com.inlinea.app.desktop "$APP_DIR/"
+if command -v update-desktop-database &> /dev/null; then
+    update-desktop-database "$APP_DIR"
+fi
+echo "Installed desktop entry"
+
+echo ""
+echo "Desktop integration complete!"
+echo "You can now right-click any PDF -> 'Open With' -> 'Inlinea'."
+echo "(Note: Ensure $BIN_DIR is in your system PATH)"

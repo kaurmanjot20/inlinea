@@ -5,9 +5,9 @@ from gi.repository import Gtk, Adw, GLib, Gdk, GObject, Gio, Graphene
 import threading
 import bisect
 
-from pdf_app.document.loading import load_document
-from pdf_app.ui.page_view import PDFPageView
-from pdf_app.document.store import AnnotationStore
+from inlinea.document.loading import load_document
+from inlinea.ui.page_view import PDFPageView
+from inlinea.document.store import AnnotationStore
 
 
 class PageSlot:

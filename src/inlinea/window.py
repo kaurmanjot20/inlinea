@@ -3,11 +3,11 @@ gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
 from gi.repository import Gtk, Adw, Gio, GLib
 
-from pdf_app.ui.pdf_view import PDFView
-from pdf_app.ui.empty_view import EmptyView
-from pdf_app.ui.thumbnail_sidebar import ThumbnailSidebar
-from pdf_app.window_manager import WindowManager
-from pdf_app.session_manager import SessionManager
+from inlinea.ui.pdf_view import PDFView
+from inlinea.ui.empty_view import EmptyView
+from inlinea.ui.thumbnail_sidebar import ThumbnailSidebar
+from inlinea.window_manager import WindowManager
+from inlinea.session_manager import SessionManager
 
 class InlineaWindow(Adw.ApplicationWindow):
     def __init__(self, *args, add_initial_tab=True, **kwargs):
@@ -617,7 +617,7 @@ class InlineaWindow(Adw.ApplicationWindow):
                 file = d.get_file()
                 path = file.get_path()
                 
-                from pdf_app.document.export import export_flattened_pdf
+                from inlinea.document.export import export_flattened_pdf
                 success = export_flattened_pdf(view.file.get_path(), view.store, path)
                 
                 

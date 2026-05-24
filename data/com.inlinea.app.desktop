@@ -2,9 +2,10 @@
 Type=Application
 Name=Inlinea
 Comment=Professional PDF viewer and annotation editor
-Exec=python3 INSTALL_DIR/main.py %F
-Icon=INSTALL_DIR/src/assets/images/inlinea.png
+Exec=inlinea %F
+Icon=inlinea
 MimeType=application/pdf;
 Categories=Office;Viewer;Graphics;
+Keywords=pdf;annotation;viewer;editor;
 Terminal=false
 StartupNotify=true

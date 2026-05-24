@@ -4,11 +4,11 @@ gi.require_version('Gtk', '4.0')
 gi.require_version('Poppler', '0.18')
 from gi.repository import Gtk, Gdk, GLib, Poppler
 
-from pdf_app.document.store import Annotation, AnnotationStore
-from pdf_app.ui.text_dialog import TextAnnotationDialog
+from inlinea.document.store import Annotation, AnnotationStore
+from inlinea.ui.text_dialog import TextAnnotationDialog
 
-from pdf_app.ui.pdf_drawing_area import PDFDrawingArea
-from pdf_app.ui.text_toolbar import TextFormattingToolbar
+from inlinea.ui.pdf_drawing_area import PDFDrawingArea
+from inlinea.ui.text_toolbar import TextFormattingToolbar
 
 class PDFPageView(Gtk.Overlay):
 
@@ -186,7 +186,7 @@ class PDFPageView(Gtk.Overlay):
                 for r in link['rects']:
                     if r[0] <= pdf_x <= r[0] + r[2] and r[1] <= pdf_y <= r[1] + r[3]:
                         uri = link['uri']
-                        from pdf_app.utils.links import is_safe_url
+                        from inlinea.utils.links import is_safe_url
                         if is_safe_url(uri):
                             try:
                                 import gi
@@ -207,6 +207,7 @@ class PDFPageView(Gtk.Overlay):
         hit_ann = self.store.find_annotation_at(self.page_number, x/self.scale, y/self.scale)
         
         if hit_ann:
+            prev_selected = self.drawing_area.selected_annotation
             self.drawing_area.selected_annotation = hit_ann
             self.drawing_area.selected_region = None
             if hit_ann.type == 'text':
@@ -214,8 +215,11 @@ class PDFPageView(Gtk.Overlay):
                 # If clicking a text annotation, we don't automatically enter edit mode 
                 # (double-click does that). If we were already in edit mode on another 
                 # annotation, we exit it.
-                if self.drawing_area.editing_mode and hit_ann != self.drawing_area.selected_annotation:
-                    self.drawing_area.set_editing_mode(False)
+                if self.drawing_area.editing_mode:
+                    if hit_ann != prev_selected:
+                        self.drawing_area.set_editing_mode(False)
+                    else:
+                        self.drawing_area.set_cursor_from_click(x, y)
             else:
                 self.hide_text_toolbar()
                 self.drawing_area.set_editing_mode(False)
@@ -586,7 +590,7 @@ class PDFPageView(Gtk.Overlay):
     def _get_pdf_view(self):
         p = self.get_parent()
         while p:
-            from pdf_app.ui.pdf_view import PDFView
+            from inlinea.ui.pdf_view import PDFView
             if isinstance(p, PDFView):
                 return p
             p = p.get_parent()
