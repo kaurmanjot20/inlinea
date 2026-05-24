@@ -38,6 +38,11 @@ Ctrl+Scroll and pinch zoom into where your cursor is, not the center of the scre
 
 You'll need GTK 4, Libadwaita, Poppler, Cairo, and PyMuPDF installed.
 
+### Arch Linux (AUR)
+
+```bash
+yay -S inlinea
+```
 **Fedora / RHEL:**
 ```bash
 sudo dnf install \
@@ -63,6 +68,7 @@ python3 -m inlinea
 ```
 
 **Arch Linux:**
+
 ```bash
 sudo pacman -S gtk4 libadwaita python-gobject python-cairo poppler-glib python-pymupdf
 git clone https://github.com/kaurmanjot20/inlinea.git

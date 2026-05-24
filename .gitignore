@@ -43,3 +43,7 @@ Thumbs.db
 
 # Project Specific
 *.pdf
+
+AURkey
+AURkey.pub
+*.tar.gz
