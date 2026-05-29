@@ -23,6 +23,7 @@ Have an idea for a new feature? We'd love to hear it! Open an issue to discuss y
 4. **Install dependencies**. See the "Setup & Installation" section in the `README.md` for packages required by your OS.
 5. **Run the project locally** to ensure your setup works:
    ```bash
+   pip install -e .
    python3 -m inlinea
    ```
 6. **Make your changes**. Please try to keep your code clean and document complex logic.
