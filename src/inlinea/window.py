@@ -1188,28 +1188,45 @@ class InlineaWindow(Adw.ApplicationWindow):
                     self.tab_view.close_page_finish(page, True)
                     
             elif resp == "save":
+                failed_pages = []
                 for page in dirty_pages:
                     view = page.get_child()
                     if hasattr(view, 'store') and hasattr(view, 'file'):
                         try:
-                            # Save annotations back into PDF (overwrite source)
                             src = view.file.get_path()
                             view.store.save_to_pdf(src, src)
                         except Exception:
-                            pass
-                
+                            failed_pages.append(page)
+
+                if failed_pages:
+                    count = len(failed_pages)
+                    if count == 1:
+                        name = failed_pages[0].get_title() or "document"
+                        if name.startswith("* "): name = name[2:]
+                        toast = Adw.Toast.new(f"Save failed for '{name}'")
+                    else:
+                        toast = Adw.Toast.new(f"Save failed for {count} documents")
+                    self.toast_overlay.add_toast(toast)
+
                 if close_app:
-                    try: self.disconnect_by_func(self.on_close_request)
-                    except Exception: pass
-                    wm = WindowManager.get()
-                    # Save session BEFORE unregistering
-                    if len(wm.windows) <= 1:
-                        SessionManager.get().save_now(clean_exit=True)
-                    wm.unregister(self)
-                    self.close()
+                    if failed_pages:
+                        # Abort quit — keep failed tabs open so user can retry
+                        pass
+                    else:
+                        try: self.disconnect_by_func(self.on_close_request)
+                        except Exception: pass
+                        wm = WindowManager.get()
+                        if len(wm.windows) <= 1:
+                            SessionManager.get().save_now(clean_exit=True)
+                        wm.unregister(self)
+                        self.close()
                 else:
                     page = dirty_pages[0]
-                    self.tab_view.close_page_finish(page, True)
+                    if page in failed_pages:
+                        # Reject the close — keep tab alive
+                        self.tab_view.close_page_finish(page, False)
+                    else:
+                        self.tab_view.close_page_finish(page, True)
             
             else: # Cancel
                  if not close_app:
