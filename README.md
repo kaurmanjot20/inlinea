@@ -78,6 +78,19 @@ cd inlinea
 python3 -m inlinea
 ```
 
+### Working in a virtualenv
+
+If you work in a virtualenv, create it with `--system-site-packages`:
+
+```bash
+python3 -m venv --system-site-packages .venv
+source .venv/bin/activate
+pip install -e .
+python3 -m inlinea
+```
+
+GTK, Poppler, and Cairo bindings (`python3-gi`, `python3-cairo`) are installed via the system package manager, not PyPI. A standard venv hides those packages; `--system-site-packages` lets the venv inherit them while keeping everything else isolated. The `pip install -e .` registers the `inlinea` package itself into the venv.
+
 ### Desktop Integration (Right-click "Open With" support)
 
 If you are running from source and want to be able to double-click PDFs or right-click to "Open With -> Inlinea" in your system file manager, simply run the desktop integration script:
