@@ -18,12 +18,13 @@ Have an idea for a new feature? We'd love to hear it! Open an issue to discuss y
 
 ### Code Contributions 💻
 1. **Fork** the repository.
-2. **Clone** your fork locally: `git clone https://github.com/your-username/linux-pdf-editor.git`
+2. **Clone** your fork locally: `git clone https://github.com/your-username/inlinea.git`
 3. **Create a branch** for your feature or bugfix: `git checkout -b feature/my-awesome-feature`
 4. **Install dependencies**. See the "Setup & Installation" section in the `README.md` for packages required by your OS.
 5. **Run the project locally** to ensure your setup works:
    ```bash
-   python3 main.py
+   pip install -e .
+   python3 -m inlinea
    ```
 6. **Make your changes**. Please try to keep your code clean and document complex logic.
 7. **Commit your changes**: `git commit -m 'Add some feature'`
@@ -34,32 +35,40 @@ Have an idea for a new feature? We'd love to hear it! Open an issue to discuss y
 When making changes, it can be helpful to understand how the codebase is organized:
 
 ```text
-main.py                    # Entry point
 install-desktop.sh         # Desktop entry installer
-com.inlinea.app.desktop    # Freedesktop .desktop file
+data/
+  com.inlinea.app.desktop  # Freedesktop .desktop file
+  icons/
+    inlinea.png            # Application icon
 src/
-  assets/
-    style.css              # Application stylesheet
-  pdf_app/
+  inlinea/
+    __main__.py            # Entry point (python3 -m inlinea)
     app.py                 # GTK Application class
-    main.py                # Module entry point
     window.py              # Main window, tabs & ribbon
+    window_manager.py      # Singleton tracking open windows
+    session_manager.py     # JSON snapshot of windows/tabs/scroll/zoom
+    assets/
+      style.css            # Application stylesheet
     ui/
       pdf_view.py          # Virtual-scroll PDF viewer
       page_view.py         # Per-page overlay (gestures, annotations)
       pdf_drawing_area.py  # Cairo rendering & annotation drawing
       thumbnail_sidebar.py # Lazy thumbnail grid
       empty_view.py        # Welcome screen
-      text_editor.py       # Inline text editor popover
       text_dialog.py       # Text annotation dialog
+      text_toolbar.py      # Text formatting popover
     document/
       loading.py           # Poppler document loader
-      render.py            # Page-to-surface renderer
       store.py             # Annotation data model & undo/redo
       pdf_storage.py       # PyMuPDF annotation I/O
       export.py            # Flattened PDF export
+      engine/
+        pool.py            # Render-worker thread pool
+        job.py             # Render-job dataclass
+        context.py         # Render context (scale, rotation, dpi)
     utils/
       geometry.py          # Geometry helpers
+      links.py             # URL safety & embedded link extraction
 ```
 
 ## Pull Request Process & Merging Rules 🚨
