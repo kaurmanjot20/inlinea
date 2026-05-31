@@ -1,8 +1,11 @@
+import logging
 import re
 from urllib.parse import urlparse
 import gi
 gi.require_version('Poppler', '0.18')
 from gi.repository import Poppler
+
+logger = logging.getLogger(__name__)
 
 URL_REGEX = re.compile(r'https?://[^\s<>"]+|mailto:[^\s<>"]+')
 
@@ -49,7 +52,7 @@ def extract_embedded_links(page: Poppler.Page) -> list:
                 rects = [(x, y, w, h)]
                 links.append({"uri": uri, "rects": rects})
     except Exception:
-        pass
+        logger.debug("Failed to extract embedded links from page", exc_info=True)
     return links
 
 def extract_text_links(page: Poppler.Page) -> list:
@@ -108,5 +111,5 @@ def extract_text_links(page: Poppler.Page) -> list:
             links.append({"uri": uri, "rects": rects})
                 
     except Exception:
-        pass
+        logger.debug("Failed to extract text links from page", exc_info=True)
     return links
