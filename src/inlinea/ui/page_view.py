@@ -1,8 +1,11 @@
 import cairo
+import logging
 import gi
 gi.require_version('Gtk', '4.0')
 gi.require_version('Poppler', '0.18')
 from gi.repository import Gtk, Gdk, GLib, Poppler
+
+logger = logging.getLogger(__name__)
 
 from inlinea.document.store import Annotation, AnnotationStore
 from inlinea.ui.text_dialog import TextAnnotationDialog
@@ -195,8 +198,8 @@ class PDFPageView(Gtk.Overlay):
                                 launcher = Gtk.UriLauncher.new(uri)
                                 parent = self.get_root() if hasattr(self, 'get_root') else None
                                 launcher.launch(parent, None, None)
-                            except Exception as e:
-                                pass
+                            except Exception:
+                                logger.warning("Failed to open URI %s", uri, exc_info=True)
                         return
 
         if self.current_tool == 'text':
