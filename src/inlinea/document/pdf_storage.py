@@ -119,7 +119,7 @@ def load_annotations_from_pdf(file_path: str) -> List[Annotation]:
                         if "color" in meta:
                             color = tuple(meta["color"])
                 except Exception:
-                    pass
+                    logger.debug("Failed to parse annotation metadata, using defaults", exc_info=True)
 
             ann = Annotation.create(
                 type=annot_type,
