@@ -178,7 +178,7 @@ def save_annotations_to_pdf(
             elif ann.type == "square":
                  _add_square_annot(page, ann, (r, g, b))
         except Exception:
-            pass
+            logger.warning("Failed to write %s annotation on page %d", ann.type, ann.page_index, exc_info=True)
 
     # Phase 3: Save
     if output_path == source_path:
