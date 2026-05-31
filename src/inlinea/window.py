@@ -1176,7 +1176,7 @@ class InlineaWindow(Adw.ApplicationWindow):
             if resp == "discard":
                 if close_app:
                     try: self.disconnect_by_func(self.on_close_request)
-                    except: pass
+                    except TypeError: pass
                     wm = WindowManager.get()
                     # Save session BEFORE unregistering
                     if len(wm.windows) <= 1:
@@ -1214,7 +1214,7 @@ class InlineaWindow(Adw.ApplicationWindow):
                         pass
                     else:
                         try: self.disconnect_by_func(self.on_close_request)
-                        except Exception: pass
+                        except TypeError: pass
                         wm = WindowManager.get()
                         if len(wm.windows) <= 1:
                             SessionManager.get().save_now(clean_exit=True)
