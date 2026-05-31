@@ -1,3 +1,4 @@
+import logging
 import gi
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
@@ -5,6 +6,8 @@ from gi.repository import Gtk, Adw, Gio, Gdk
 
 from inlinea.window_manager import WindowManager
 from inlinea.session_manager import SessionManager
+
+logger = logging.getLogger(__name__)
 
 class PDFApplication(Adw.Application):
     def __init__(self, application_id='com.inlinea.app', flags=Gio.ApplicationFlags.HANDLES_OPEN):
@@ -82,6 +85,6 @@ class PDFApplication(Adw.Application):
                 Gtk.StyleContext.add_provider_for_display(
                     display, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
                 )
-        except Exception as e:
-            pass
+        except Exception:
+            logger.warning("Failed to load application CSS", exc_info=True)
 
