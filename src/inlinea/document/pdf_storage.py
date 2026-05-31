@@ -1,8 +1,11 @@
 
 import fitz  # PyMuPDF
+import logging
 from typing import List, Tuple
 import json
 from inlinea.document.store import Annotation
+
+logger = logging.getLogger(__name__)
 
 APP_CREATOR = "Inlinea"
 
@@ -65,7 +68,8 @@ def load_annotations_from_pdf(file_path: str) -> List[Annotation]:
 
     try:
         doc = fitz.open(file_path)
-    except Exception as e:
+    except Exception:
+        logger.warning("Could not open %s for annotation load", file_path, exc_info=True)
         return annotations
 
     for page_index in range(len(doc)):
