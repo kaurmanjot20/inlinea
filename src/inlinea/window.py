@@ -1,7 +1,10 @@
+import logging
 import gi
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
 from gi.repository import Gtk, Adw, Gio, GLib
+
+logger = logging.getLogger(__name__)
 
 from inlinea.ui.pdf_view import PDFView
 from inlinea.ui.empty_view import EmptyView
@@ -544,6 +547,7 @@ class InlineaWindow(Adw.ApplicationWindow):
             toast = Adw.Toast.new(f"Saved {view.file.get_basename()}")
             self.toast_overlay.add_toast(toast)
         except Exception:
+            logger.exception("Save failed for %s", src)
             toast = Adw.Toast.new("Save Failed")
             self.toast_overlay.add_toast(toast)
 
@@ -579,7 +583,8 @@ class InlineaWindow(Adw.ApplicationWindow):
                     view.store.save_to_pdf(view.file.get_path(), path)
                     toast = Adw.Toast.new(f"Saved to {file.get_basename()}")
                     self.toast_overlay.add_toast(toast)
-                except Exception as e:
+                except Exception:
+                    logger.exception("Save As failed for %s", path)
                     toast = Adw.Toast.new("Save Failed")
                     self.toast_overlay.add_toast(toast)
             d.destroy()
