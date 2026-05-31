@@ -9,9 +9,12 @@ don't hammer disk I/O.
 """
 
 import json
+import logging
 import os
 import time
 from gi.repository import GLib
+
+logger = logging.getLogger(__name__)
 
 
 SESSION_DIR = os.path.join(
@@ -70,6 +73,7 @@ class SessionManager:
                 return None
             return data
         except (json.JSONDecodeError, OSError, KeyError):
+            logger.warning("Could not read session file %s", SESSION_FILE, exc_info=True)
             return None
 
     def clear_session(self):
