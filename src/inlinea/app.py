@@ -79,12 +79,14 @@ class PDFApplication(Adw.Application):
         try:
             import os
             css_path = os.path.join(os.path.dirname(__file__), "assets", "style.css")
-            if os.path.exists(css_path):
+            if os.access(css_path, os.R_OK):
                 provider.load_from_path(css_path)
                 display = Gdk.Display.get_default()
                 Gtk.StyleContext.add_provider_for_display(
                     display, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
                 )
+            else:
+                logger.warning("Cannot read CSS file %s", css_path)
         except Exception:
             logger.warning("Failed to load application CSS", exc_info=True)
 
