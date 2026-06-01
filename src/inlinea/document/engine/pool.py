@@ -1,4 +1,5 @@
 import cairo
+import logging
 import threading
 import queue
 import time
@@ -8,6 +9,8 @@ from gi.repository import GLib, Poppler
 
 from .job import RenderTextureJob
 from .context import RenderContext
+
+logger = logging.getLogger(__name__)
 
 _render_queue = queue.PriorityQueue()
 _thread_local = threading.local()
@@ -68,8 +71,8 @@ def _worker_loop():
             # Final cancellation check before UI Handoff
             if not (job.token and job.token[0]):
                 GLib.idle_add(job.callback, surface, job.context)
-        except Exception as e:
-            print(f"Render Error on Worker: {e}")
+        except Exception:
+            logger.exception("Render failed for %s (page %d)", job.uri, job.page_index)
             if not (job.token and job.token[0]):
                 GLib.idle_add(job.callback, None, job.context)
         finally:

@@ -101,6 +101,28 @@ bash install-desktop.sh
 
 This will automatically create a local executable wrapper in `~/.local/bin/` and register the `.desktop` shortcut with your system.
 
+## Debugging / Logging
+
+Inlinea logs warnings and errors to stderr. To see output, launch from a terminal:
+
+```bash
+python3 -m inlinea
+```
+
+For full debug output (render events, link extraction, annotation parsing):
+
+```bash
+INLINEA_DEBUG=1 python3 -m inlinea
+```
+
+If you launched from the desktop, logs are captured by the journal:
+
+```bash
+journalctl -f | grep inlinea
+```
+
+Log lines follow the format `module WARNING: message`. 
+
 ## Contributing
 
 Contributions are welcome - whether it's a bug fix, a new feature, or just cleaning something up. Check out the [Contributing Guidelines](CONTRIBUTING.md) for how to get started.

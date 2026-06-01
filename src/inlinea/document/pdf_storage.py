@@ -1,8 +1,11 @@
 
 import fitz  # PyMuPDF
+import logging
 from typing import List, Tuple
 import json
 from inlinea.document.store import Annotation
+
+logger = logging.getLogger(__name__)
 
 APP_CREATOR = "Inlinea"
 
@@ -65,7 +68,8 @@ def load_annotations_from_pdf(file_path: str) -> List[Annotation]:
 
     try:
         doc = fitz.open(file_path)
-    except Exception as e:
+    except Exception:
+        logger.warning("Could not open %s for annotation load", file_path, exc_info=True)
         return annotations
 
     for page_index in range(len(doc)):
@@ -115,7 +119,7 @@ def load_annotations_from_pdf(file_path: str) -> List[Annotation]:
                         if "color" in meta:
                             color = tuple(meta["color"])
                 except Exception:
-                    pass
+                    logger.debug("Failed to parse annotation metadata, using defaults", exc_info=True)
 
             ann = Annotation.create(
                 type=annot_type,
@@ -174,7 +178,7 @@ def save_annotations_to_pdf(
             elif ann.type == "square":
                  _add_square_annot(page, ann, (r, g, b))
         except Exception:
-            pass
+            logger.warning("Failed to write %s annotation on page %d", ann.type, ann.page_index, exc_info=True)
 
     # Phase 3: Save
     if output_path == source_path:
