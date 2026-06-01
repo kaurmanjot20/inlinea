@@ -1201,6 +1201,7 @@ class InlineaWindow(Adw.ApplicationWindow):
                             src = view.file.get_path()
                             view.store.save_to_pdf(src, src)
                         except Exception:
+                            logger.exception("Save failed for %s", view.file.get_path())
                             failed_pages.append(page)
 
                 if failed_pages:
