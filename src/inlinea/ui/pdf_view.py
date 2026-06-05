@@ -1,7 +1,6 @@
 import gi
 gi.require_version('Gtk', '4.0')
-gi.require_version('Graphene', '1.0')
-from gi.repository import Gtk, Adw, GLib, Gdk, GObject, Gio, Graphene
+from gi.repository import Gtk, Adw, GLib, Gdk, GObject, Gio
 import threading
 import bisect
 
@@ -195,6 +194,7 @@ class PDFView(Gtk.ScrolledWindow):
         self.sidebar = None
         self.is_dual_mode = False
         self.is_continuous = True
+        self._pointer_pos = None
 
         key_ctrl = Gtk.EventControllerKey()
         key_ctrl.connect("key-pressed", self.on_key_pressed)
@@ -210,6 +210,12 @@ class PDFView(Gtk.ScrolledWindow):
         scroll_controller.set_flags(Gtk.EventControllerScrollFlags.VERTICAL)
         scroll_controller.connect("scroll", self.on_scroll)
         self.add_controller(scroll_controller)
+
+        motion_ctrl = Gtk.EventControllerMotion()
+        motion_ctrl.connect("motion", self.on_pointer_motion)
+        motion_ctrl.connect("enter", self.on_pointer_motion)
+        motion_ctrl.connect("leave", self.on_pointer_leave)
+        self.add_controller(motion_ctrl)
 
         self.load_pdf()
 
@@ -490,6 +496,12 @@ class PDFView(Gtk.ScrolledWindow):
     def on_zoom_end(self, gesture, sequence):
         self._gesture_start_scale = self.scale
 
+    def on_pointer_motion(self, controller, x, y):
+        self._pointer_pos = (x, y)
+
+    def on_pointer_leave(self, controller):
+        self._pointer_pos = None
+
     def _zoom_around_focal(self, new_scale, focal):
         if abs(new_scale - self.scale) < 0.001:
             return
@@ -766,25 +778,7 @@ class PDFView(Gtk.ScrolledWindow):
         state = controller.get_current_event_state()
 
         if state & Gdk.ModifierType.CONTROL_MASK:
-            event = controller.get_current_event()
-            focal = None
-            if event:
-                # event.get_position() returns surface-relative coords (includes header bar)
-                # Translate to ScrolledWindow-local coords for correct focal math
-                sx, sy = event.get_position()
-                native = self.get_native()
-                if native:
-                    nx, ny = native.get_surface_transform()
-                    p = Graphene.Point()
-                    p.x = sx - nx
-                    p.y = sy - ny
-                    success, pt = native.compute_point(self, p)
-                    if success:
-                        focal = (pt.x, pt.y)
-                if focal is None:
-                    focal = self._get_viewport_center_focal()
-            else:
-                focal = self._get_viewport_center_focal()
+            focal = self._pointer_pos if self._pointer_pos is not None else self._get_viewport_center_focal()
 
             new_scale = self._clamp_scale(self.scale * (1.1 if dy < 0 else 1 / 1.1))
             self._zoom_around_focal(new_scale, focal)
