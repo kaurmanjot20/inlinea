@@ -771,9 +771,9 @@ class PDFView(Gtk.ScrolledWindow):
             if event:
                 # event.get_position() returns surface-relative coords (includes header bar)
                 # Translate to ScrolledWindow-local coords for correct focal math
-                sx, sy = event.get_position()
+                ok, sx, sy = event.get_position()
                 native = self.get_native()
-                if native:
+                if ok and native:
                     nx, ny = native.get_surface_transform()
                     p = Graphene.Point()
                     p.x = sx - nx
