@@ -213,6 +213,8 @@ class PDFView(Gtk.ScrolledWindow):
 
         motion_ctrl = Gtk.EventControllerMotion()
         motion_ctrl.connect("motion", self.on_pointer_motion)
+        motion_ctrl.connect("enter", self.on_pointer_motion)
+        motion_ctrl.connect("leave", self.on_pointer_leave)
         self.add_controller(motion_ctrl)
 
         self.load_pdf()
@@ -496,6 +498,9 @@ class PDFView(Gtk.ScrolledWindow):
 
     def on_pointer_motion(self, controller, x, y):
         self._pointer_pos = (x, y)
+
+    def on_pointer_leave(self, controller):
+        self._pointer_pos = None
 
     def _zoom_around_focal(self, new_scale, focal):
         if abs(new_scale - self.scale) < 0.001:
